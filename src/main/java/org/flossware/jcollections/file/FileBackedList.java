@@ -1,0 +1,385 @@
+package org.flossware.jcollections.file;
+
+import org.flossware.jcollections.file.cache.WriteCache;
+import org.flossware.jcollections.file.format.EntryChecksum;
+import org.flossware.jcollections.file.format.FileHeader;
+import org.flossware.jcollections.file.locking.FileLockManager;
+
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.SequencedCollection;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+public class FileBackedList<E extends Serializable> extends AbstractList<E> implements SequencedCollection<E>, AutoCloseable {
+    private final RandomAccessFile file;
+    private final FileChannel channel;
+    private MappedByteBuffer mappedBuffer;
+    private final ReentrantReadWriteLock lock;
+    private final List<Long> offsets;
+    private final AtomicInteger size;
+    private final FileHeader header;
+    private final FileLockManager lockManager;
+    private final WriteCache<E> cache;
+    private final boolean enableChecksums;
+    private final boolean enableMmap;
+    private final boolean enableCache;
+    private long actualDataSize;
+
+    public static class Builder<E extends Serializable> {
+        private File path;
+        private boolean enableChecksums = true;
+        private boolean enableMmap = true;
+        private boolean enableCache = true;
+        private int cacheSize = 1000;
+        private long cacheFlushMs = 5000;
+        private boolean sharedLock = false;
+
+        public Builder(File path) {
+            this.path = path;
+        }
+
+        public Builder<E> enableChecksums(boolean enable) {
+            this.enableChecksums = enable;
+            return this;
+        }
+
+        public Builder<E> enableMmap(boolean enable) {
+            this.enableMmap = enable;
+            return this;
+        }
+
+        public Builder<E> enableCache(boolean enable) {
+            this.enableCache = enable;
+            return this;
+        }
+
+        public Builder<E> cacheSize(int size) {
+            this.cacheSize = size;
+            return this;
+        }
+
+        public Builder<E> cacheFlushMs(long ms) {
+            this.cacheFlushMs = ms;
+            return this;
+        }
+
+        public Builder<E> sharedLock(boolean shared) {
+            this.sharedLock = shared;
+            return this;
+        }
+
+        public FileBackedList<E> build() throws IOException {
+            return new FileBackedList<>(this);
+        }
+    }
+
+    private FileBackedList(Builder<E> builder) throws IOException {
+        this.file = new RandomAccessFile(builder.path, "rw");
+        this.channel = file.getChannel();
+        this.lock = new ReentrantReadWriteLock();
+        this.offsets = new ArrayList<>();
+        this.size = new AtomicInteger(0);
+        this.enableChecksums = builder.enableChecksums;
+        this.enableMmap = builder.enableMmap;
+        this.enableCache = builder.enableCache;
+
+        this.lockManager = new FileLockManager(file, builder.sharedLock);
+
+        this.cache = builder.enableCache ?
+            new WriteCache<>(builder.cacheSize, builder.cacheFlushMs) : null;
+
+        FileHeader existingHeader = FileHeader.read(file);
+        if (existingHeader == null) {
+            int flags = 0;
+            if (enableChecksums) flags |= FileHeader.FLAG_CHECKSUMS_ENABLED;
+            if (enableMmap) flags |= FileHeader.FLAG_MMAP_ENABLED;
+
+            this.header = new FileHeader(FileHeader.VERSION_2, flags);
+            header.write(file);
+        } else {
+            this.header = existingHeader;
+        }
+
+        this.actualDataSize = file.length();
+        loadIndex();
+
+        if (enableMmap) {
+            remapBuffer();
+        }
+    }
+
+    private void loadIndex() throws IOException {
+        lock.writeLock().lock();
+        try {
+            if (actualDataSize <= FileHeader.getHeaderSize()) {
+                return;
+            }
+
+            long position = FileHeader.getHeaderSize();
+            while (position + 4 <= actualDataSize) {
+                file.seek(position);
+                int length = file.readInt();
+
+                if (length < 0 || length > 100_000_000) {
+                    break;
+                }
+
+                long checksumSize = header.hasFlag(FileHeader.FLAG_CHECKSUMS_ENABLED) ? 8 : 0;
+                long entrySize = 4 + checksumSize + length;
+
+                if (position + entrySize > actualDataSize) {
+                    break;
+                }
+
+                if (header.hasFlag(FileHeader.FLAG_CHECKSUMS_ENABLED)) {
+                    file.readLong();
+                }
+
+                offsets.add(position);
+                position += entrySize;
+                size.incrementAndGet();
+            }
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    private void remapBuffer() throws IOException {
+        if (mappedBuffer != null) {
+            mappedBuffer.force();
+        }
+        long fileSize = Math.max(file.length(), 1024 * 1024);
+        this.mappedBuffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, fileSize);
+    }
+
+    @Override
+    public E get(int index) {
+        Objects.checkIndex(index, size.get());
+
+        if (enableCache && cache != null) {
+            long offset = offsets.get(index);
+            E cached = cache.get(offset);
+            if (cached != null) {
+                return cached;
+            }
+        }
+
+        lock.readLock().lock();
+        try {
+            long offset = offsets.get(index);
+            file.seek(offset);
+            int length = file.readInt();
+            long storedChecksum = enableChecksums ? file.readLong() : 0;
+
+            byte[] buffer = new byte[length];
+            file.readFully(buffer);
+
+            if (enableChecksums && !EntryChecksum.verifyChecksum(buffer, storedChecksum)) {
+                throw new IOException("Checksum mismatch at index " + index);
+            }
+
+            return deserialize(buffer);
+        } catch (IOException | ClassNotFoundException e) {
+            throw new UncheckedIOException(new IOException(e));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    @Override
+    public int size() {
+        return size.get();
+    }
+
+    @Override
+    public boolean add(E e) {
+        lock.writeLock().lock();
+        try {
+            flushCacheIfNeeded();
+
+            byte[] data = serialize(e);
+            long offset = actualDataSize;
+
+            file.seek(offset);
+            file.writeInt(data.length);
+
+            if (enableChecksums) {
+                long checksum = EntryChecksum.calculateChecksum(data);
+                file.writeLong(checksum);
+            }
+
+            file.write(data);
+            offsets.add(offset);
+            size.incrementAndGet();
+
+            actualDataSize = file.getFilePointer();
+
+            if (enableCache && cache != null) {
+                cache.put(offset, e, data);
+            }
+
+            if (enableMmap && mappedBuffer != null && actualDataSize > mappedBuffer.capacity()) {
+                remapBuffer();
+            }
+
+            return true;
+        } catch (IOException ex) {
+            throw new UncheckedIOException(ex);
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    private void flushCacheIfNeeded() throws IOException {
+        if (!enableCache || cache == null || !cache.shouldFlush()) {
+            return;
+        }
+
+        List<WriteCache.CachedEntry<E>> pendingWrites = cache.getPendingWrites();
+        for (WriteCache.CachedEntry<E> entry : pendingWrites) {
+            file.seek(entry.offset);
+            file.writeInt(entry.serialized.length);
+
+            if (enableChecksums) {
+                long checksum = EntryChecksum.calculateChecksum(entry.serialized);
+                file.writeLong(checksum);
+            }
+
+            file.write(entry.serialized);
+        }
+    }
+
+    public void flush() throws IOException {
+        lock.writeLock().lock();
+        try {
+            if (enableCache && cache != null) {
+                flushCacheIfNeeded();
+            }
+            if (mappedBuffer != null) {
+                mappedBuffer.force();
+            }
+            file.setLength(actualDataSize);
+            channel.force(true);
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    public void compact() throws IOException {
+        lock.writeLock().lock();
+        try {
+            flush();
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public void addFirst(E e) {
+        throw new UnsupportedOperationException("addFirst not supported (requires rewriting file)");
+    }
+
+    @Override
+    public void addLast(E e) {
+        add(e);
+    }
+
+    @Override
+    public E getFirst() {
+        if (size.get() == 0) {
+            throw new java.util.NoSuchElementException();
+        }
+        return get(0);
+    }
+
+    @Override
+    public E getLast() {
+        if (size.get() == 0) {
+            throw new java.util.NoSuchElementException();
+        }
+        return get(size.get() - 1);
+    }
+
+    @Override
+    public E removeFirst() {
+        throw new UnsupportedOperationException("removeFirst not supported (requires rewriting file)");
+    }
+
+    @Override
+    public E removeLast() {
+        lock.writeLock().lock();
+        try {
+            if (size.get() == 0) {
+                throw new java.util.NoSuchElementException();
+            }
+            flush();
+            int lastIndex = size.get() - 1;
+            E element = get(lastIndex);
+            long offset = offsets.remove(lastIndex);
+            file.setLength(offset);
+            size.decrementAndGet();
+
+            if (enableMmap) {
+                remapBuffer();
+            }
+
+            return element;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public void close() throws IOException {
+        lock.writeLock().lock();
+        try {
+            if (enableCache && cache != null) {
+                flushCacheIfNeeded();
+                cache.close();
+            }
+            if (mappedBuffer != null) {
+                mappedBuffer.force();
+            }
+            if (file != null && channel.isOpen()) {
+                file.setLength(actualDataSize);
+                channel.force(true);
+            }
+            if (lockManager != null) {
+                lockManager.close();
+            }
+            if (file != null) {
+                file.close();
+            }
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    private byte[] serialize(E obj) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+            oos.writeObject(obj);
+        }
+        return baos.toByteArray();
+    }
+
+    @SuppressWarnings("unchecked")
+    private E deserialize(byte[] data) throws IOException, ClassNotFoundException {
+        try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(data))) {
+            return (E) ois.readObject();
+        }
+    }
+
+    public FileHeader getHeader() {
+        return header;
+    }
+}
