@@ -20,10 +20,10 @@ jobs:
           java-version: '21'
 
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Preparing settings.xml
-        uses: s4u/maven-settings-action@v3.0.0
+        uses: s4u/maven-settings-action@v3.1.0
         with:
           githubServer: false
           servers: |
