@@ -279,6 +279,36 @@ mvn versions:set -DnewVersion=2.0 -DgenerateBackupPoms=false
 mvn clean compile
 ```
 
+### Cross-Platform Version Bumping
+
+The CI/CD pipeline includes scripts for manual version bumping on multiple platforms:
+
+**Linux/macOS:**
+```bash
+./ci/rev-version.sh
+```
+
+**Windows PowerShell (recommended):**
+```powershell
+.\ci\rev-version.ps1
+```
+
+**Windows Command Prompt:**
+```cmd
+.\ci\rev-version.bat
+```
+
+All three scripts perform the same operations:
+- Configure git identity for commits
+- Extract current version from pom.xml
+- Increment minor version (X.Y → X.Y+1)
+- Update pom.xml with new version
+- Create git commit with `[ci skip]` tag
+- Create annotated git tag (e.g., `v1.5`)
+- Push changes and tags to origin
+
+The PowerShell version includes enhanced error handling and colored console output.
+
 ### Version Format Rules
 
 - ✅ Valid: `1.0`, `1.1`, `2.0`, `10.5`

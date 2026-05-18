@@ -19,10 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SCM configuration in pom.xml pointing to GitHub repository
 - Distribution management configuration for packagecloud.io deployment
 - Commit message property for automated version bumps with `[ci skip]`
+- Cross-platform version bumping scripts
+  - `ci/rev-version.ps1` - Windows PowerShell version with enhanced error handling and colored output
+  - `ci/rev-version.bat` - Windows Command Prompt batch file version
+  - Both scripts provide equivalent functionality to the Linux shell script
 
 ### Changed
 - Version management now automated via GitHub Actions instead of manual ci/rev-version.sh script
 - Minor version auto-incremented on each main branch push (1.0 → 1.1 → 1.2...)
+- Documentation updated with cross-platform script usage examples
 
 ## [1.0] - 2026-05-14
 
