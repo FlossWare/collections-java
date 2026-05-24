@@ -7,6 +7,10 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.AbstractMap;
 import java.util.AbstractSet;
 import java.util.Iterator;
@@ -266,14 +270,20 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
         // Close the current file before replacing
         entryList.close();
 
-        // Replace original file with compacted temp file
-        if (!originalFile.delete()) {
-            tempFile.delete();
-            throw new IOException("Failed to delete original file during compaction");
-        }
+        // Replace original file with compacted temp file using NIO for cross-platform reliability
+        Path originalPath = originalFile.toPath();
+        Path tempPath = tempFile.toPath();
 
-        if (!tempFile.renameTo(originalFile)) {
-            throw new IOException("Failed to rename temp file to original file during compaction");
+        try {
+            // Try atomic move first (works on most platforms if same filesystem)
+            Files.move(tempPath, originalPath,
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            // Fallback to non-atomic move (works across filesystems)
+            logger.debug("Atomic move not supported, using regular move");
+            Files.move(tempPath, originalPath,
+                StandardCopyOption.REPLACE_EXISTING);
         }
 
         // Reopen the compacted file with saved settings
@@ -304,7 +314,99 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
 
     @Override
     public SequencedMap<K, V> reversed() {
-        return new FileBackedMap<K, V>(entryList.reversed(), index, useBTreeIndex);
+        return new ReversedMapView<>(this);
+    }
+
+    /**
+     * Reversed view of a FileBackedMap.
+     * Provides reversed iteration while delegating all other operations to the original map.
+     * Does not share the BTreeIndex - uses linear search for correctness.
+     */
+    private static class ReversedMapView<K extends Serializable & Comparable<K>, V extends Serializable>
+            extends AbstractMap<K, V> implements SequencedMap<K, V> {
+
+        private final FileBackedMap<K, V> delegate;
+
+        ReversedMapView(FileBackedMap<K, V> delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public Set<Entry<K, V>> entrySet() {
+            return new AbstractSet<Entry<K, V>>() {
+                @Override
+                public Iterator<Entry<K, V>> iterator() {
+                    // Return reversed iterator from delegate's entryList
+                    Iterator<AbstractMap.SimpleEntry<K, V>> reversedIterator =
+                        delegate.entryList.reversed().iterator();
+
+                    // Wrap iterator to convert SimpleEntry to Entry
+                    return new Iterator<Entry<K, V>>() {
+                        @Override
+                        public boolean hasNext() {
+                            return reversedIterator.hasNext();
+                        }
+
+                        @Override
+                        public Entry<K, V> next() {
+                            return reversedIterator.next();
+                        }
+                    };
+                }
+
+                @Override
+                public int size() {
+                    return delegate.size();
+                }
+            };
+        }
+
+        @Override
+        public V get(Object key) {
+            // Delegate get() to original map - it works correctly for all keys
+            return delegate.get(key);
+        }
+
+        @Override
+        public V put(K key, V value) {
+            throw new UnsupportedOperationException("Modifications not supported on reversed views");
+        }
+
+        @Override
+        public SequencedMap<K, V> reversed() {
+            // Reversing a reversed view returns the original
+            return delegate;
+        }
+
+        @Override
+        public Entry<K, V> firstEntry() {
+            return delegate.lastEntry();
+        }
+
+        @Override
+        public Entry<K, V> lastEntry() {
+            return delegate.firstEntry();
+        }
+
+        @Override
+        public Entry<K, V> pollFirstEntry() {
+            throw new UnsupportedOperationException("pollFirstEntry not supported on reversed view");
+        }
+
+        @Override
+        public Entry<K, V> pollLastEntry() {
+            throw new UnsupportedOperationException("pollLastEntry not supported on reversed view");
+        }
+
+        @Override
+        public V putFirst(K k, V v) {
+            throw new UnsupportedOperationException("putFirst not supported on reversed view");
+        }
+
+        @Override
+        public V putLast(K k, V v) {
+            throw new UnsupportedOperationException("putLast not supported on reversed view");
+        }
     }
 
     @Override

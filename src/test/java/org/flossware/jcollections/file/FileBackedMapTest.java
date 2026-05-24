@@ -230,9 +230,34 @@ class FileBackedMapTest {
     }
 
     @Test
-    void testReversedThrowsException() {
-        map.put("key", "value");
-        assertThrows(ClassCastException.class, () -> map.reversed());
+    void testReversedView() {
+        map.put("a", "first");
+        map.put("b", "second");
+        map.put("c", "third");
+
+        java.util.SequencedMap<String, String> reversed = map.reversed();
+
+        // Test get() works correctly on reversed view
+        assertEquals("first", reversed.get("a"));
+        assertEquals("second", reversed.get("b"));
+        assertEquals("third", reversed.get("c"));
+
+        // Test iteration order is reversed
+        java.util.Iterator<String> it = reversed.keySet().iterator();
+        assertEquals("c", it.next());
+        assertEquals("b", it.next());
+        assertEquals("a", it.next());
+        assertFalse(it.hasNext());
+    }
+
+    @Test
+    void testReversedViewPutBlocked() {
+        map.put("a", "1");
+        java.util.SequencedMap<String, String> reversed = map.reversed();
+
+        // put() should throw UnsupportedOperationException on reversed views
+        assertThrows(UnsupportedOperationException.class, () ->
+            reversed.put("b", "2"));
     }
 
     @Test

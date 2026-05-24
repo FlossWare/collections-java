@@ -186,9 +186,24 @@ class FileBackedSetTest {
     }
 
     @Test
-    void testReversedThrowsException() {
-        set.add("test");
-        assertThrows(ClassCastException.class, () -> set.reversed());
+    void testReversedView() {
+        set.add("a");
+        set.add("b");
+        set.add("c");
+
+        java.util.SequencedSet<String> reversed = set.reversed();
+
+        // Test contains() works correctly on reversed view
+        assertTrue(reversed.contains("a"));
+        assertTrue(reversed.contains("b"));
+        assertTrue(reversed.contains("c"));
+
+        // Test iteration order is reversed
+        java.util.Iterator<String> it = reversed.iterator();
+        assertEquals("c", it.next());
+        assertEquals("b", it.next());
+        assertEquals("a", it.next());
+        assertFalse(it.hasNext());
     }
 
     @Test

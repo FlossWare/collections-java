@@ -215,6 +215,8 @@ FileBackedList / FileBackedMap / FileBackedSet
 - **Primitive data** (millions of ints/longs) without boxing overhead
 
 ### Not Recommended For
+- **Mission-critical data** (no ACID guarantees, no crash recovery)
+- **Production systems requiring durability** (partial writes can corrupt files)
 - Relational data (use a database)
 - Frequent random updates/deletes (append-optimized)
 - Network-shared filesystems (file locking may not work)
@@ -222,11 +224,19 @@ FileBackedList / FileBackedMap / FileBackedSet
 
 ## Known Limitations
 
+### Data Durability
+- **No transaction support**: Writes are not atomic - process crashes can leave files corrupted
+- **No write-ahead logging**: Partial writes cannot be rolled back
+- **No crash recovery**: Files corrupted by partial writes must be manually repaired
+- **No ACID guarantees**: Not suitable for mission-critical data requiring durability
+
+### Performance
 - Compaction requires temporary file (no in-place compaction)
 - Memory-mapped files limited by address space (32-bit JVMs)
 - Cache flushes can cause latency spikes  
 - B-tree index rebuilt on load (slow startup for huge maps)
 - File locking may not work on network filesystems
+- Reversed maps use linear search (BTreeIndex not shared for correctness)
 
 ## Thread Safety
 
