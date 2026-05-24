@@ -1,7 +1,8 @@
 package org.flossware.jcollections.file.index;
 
 import java.io.Serializable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class BTreeIndex<K extends Serializable & Comparable<K>> {
@@ -89,12 +90,12 @@ public class BTreeIndex<K extends Serializable & Comparable<K>> {
         int i = node.entries.size() - 1;
 
         if (node.isLeaf) {
-            node.entries.add(entry);
+            // Find the insertion position
             while (i >= 0 && entry.key.compareTo(node.entries.get(i).key) < 0) {
-                node.entries.set(i + 1, node.entries.get(i));
                 i--;
             }
-            node.entries.set(i + 1, entry);
+            // Insert at the correct position (i+1)
+            node.entries.add(i + 1, entry);
         } else {
             while (i >= 0 && entry.key.compareTo(node.entries.get(i).key) < 0) {
                 i--;

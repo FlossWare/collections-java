@@ -5,7 +5,15 @@ import org.flossware.jcollections.file.format.EntryChecksum;
 import org.flossware.jcollections.file.format.FileHeader;
 import org.flossware.jcollections.file.locking.FileLockManager;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.RandomAccessFile;
+import java.io.Serializable;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -18,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class FileBackedList<E extends Serializable> extends AbstractList<E> implements SequencedCollection<E>, AutoCloseable {
+    private final File filePath;
     private final RandomAccessFile file;
     private final FileChannel channel;
     private MappedByteBuffer mappedBuffer;
@@ -81,6 +90,7 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
     }
 
     private FileBackedList(Builder<E> builder) throws IOException {
+        this.filePath = builder.path;
         this.file = new RandomAccessFile(builder.path, "rw");
         this.channel = file.getChannel();
         this.lock = new ReentrantReadWriteLock();
@@ -324,6 +334,7 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
             E element = get(lastIndex);
             long offset = offsets.remove(lastIndex);
             file.setLength(offset);
+            actualDataSize = offset;
             size.decrementAndGet();
 
             if (enableMmap) {
@@ -381,5 +392,9 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
 
     public FileHeader getHeader() {
         return header;
+    }
+
+    public File getFilePath() {
+        return filePath;
     }
 }

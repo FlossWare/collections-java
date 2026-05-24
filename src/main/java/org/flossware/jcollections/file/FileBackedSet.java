@@ -1,7 +1,12 @@
 package org.flossware.jcollections.file;
 
-import java.io.*;
-import java.util.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.AbstractSet;
+import java.util.Iterator;
+import java.util.SequencedMap;
+import java.util.SequencedSet;
 
 public class FileBackedSet<E extends Serializable & Comparable<E>> extends AbstractSet<E> implements SequencedSet<E>, AutoCloseable {
     private final SequencedMap<E, Boolean> backingMap;
@@ -103,13 +108,19 @@ public class FileBackedSet<E extends Serializable & Comparable<E>> extends Abstr
     @Override
     public E getFirst() {
         var entry = backingMap.firstEntry();
-        return (entry != null) ? entry.getKey() : null;
+        if (entry == null) {
+            throw new java.util.NoSuchElementException();
+        }
+        return entry.getKey();
     }
 
     @Override
     public E getLast() {
         var entry = backingMap.lastEntry();
-        return (entry != null) ? entry.getKey() : null;
+        if (entry == null) {
+            throw new java.util.NoSuchElementException();
+        }
+        return entry.getKey();
     }
 
     @Override
