@@ -92,7 +92,11 @@ public class FileBackedSet<E extends Serializable & Comparable<E>> extends Abstr
 
     @Override
     public boolean add(E e) {
-        return backingMap.put(e, PRESENT) == null;
+        if (backingMap.containsKey(e)) {
+            return false;
+        }
+        backingMap.put(e, PRESENT);
+        return true;
     }
 
     @Override

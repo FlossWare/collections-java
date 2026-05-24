@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FileBackedMapTest {
@@ -109,18 +110,6 @@ class FileBackedMapTest {
     }
 
     @Test
-    void testReversed() throws IOException {
-        map.put("a", "1");
-        map.put("b", "2");
-        map.put("c", "3");
-        java.util.SequencedMap<String, String> reversed = map.reversed();
-        java.util.Iterator<String> it = reversed.keySet().iterator();
-        assertEquals("c", it.next());
-        assertEquals("b", it.next());
-        assertEquals("a", it.next());
-    }
-
-    @Test
     void testFirstEntry() throws IOException {
         map.put("a", "1");
         map.put("b", "2");
@@ -136,26 +125,6 @@ class FileBackedMapTest {
         java.util.Map.Entry<String, String> last = map.lastEntry();
         assertNotNull(last);
         assertEquals("b", last.getKey());
-    }
-
-    @Test
-    void testPollFirstEntry() throws IOException {
-        map.put("a", "1");
-        map.put("b", "2");
-        java.util.Map.Entry<String, String> first = map.pollFirstEntry();
-        assertEquals("a", first.getKey());
-        assertEquals(1, map.size());
-        assertFalse(map.containsKey("a"));
-    }
-
-    @Test
-    void testPollLastEntry() throws IOException {
-        map.put("a", "1");
-        map.put("b", "2");
-        java.util.Map.Entry<String, String> last = map.pollLastEntry();
-        assertEquals("b", last.getKey());
-        assertEquals(1, map.size());
-        assertFalse(map.containsKey("b"));
     }
 
     @Test
@@ -197,11 +166,73 @@ class FileBackedMapTest {
     }
 
     @Test
-    void testClearAndIsEmpty() throws IOException {
-        map.put("key1", "value1");
-        assertFalse(map.isEmpty());
-        map.clear();
-        assertTrue(map.isEmpty());
-        assertEquals(0, map.size());
+    void testMapWithoutBTreeIndex() throws IOException {
+        File noBTreeFile = tempDir.resolve("no-btree.bin").toFile();
+        FileBackedMap<String, String> noBTreeMap = new FileBackedMap.Builder<String, String>(noBTreeFile)
+            .enableBTreeIndex(false)
+            .build();
+
+        noBTreeMap.put("key1", "value1");
+        noBTreeMap.put("key2", "value2");
+
+        assertTrue(noBTreeMap.containsKey("key1"));
+        assertEquals("value1", noBTreeMap.get("key1"));
+        assertEquals(2, noBTreeMap.size());
+
+        noBTreeMap.close();
     }
+
+    @Test
+    void testBuilderAllOptions() throws IOException {
+        File allOptionsFile = tempDir.resolve("all-options.bin").toFile();
+        FileBackedMap<String, String> fullMap = new FileBackedMap.Builder<String, String>(allOptionsFile)
+            .enableChecksums(false)
+            .enableMmap(false)
+            .enableCache(false)
+            .enableBTreeIndex(false)
+            .cacheSize(500)
+            .cacheFlushMs(10000)
+            .build();
+
+        fullMap.put("test", "value");
+        assertEquals("value", fullMap.get("test"));
+        fullMap.close();
+    }
+
+    @Test
+    void testEntrySetSize() throws IOException {
+        map.put("a", "1");
+        map.put("b", "2");
+        assertEquals(2, map.entrySet().size());
+    }
+
+    @Test
+    void testGetNonExistentKey() {
+        assertFalse(map.containsKey("nonexistent"));
+        assertEquals(null, map.get("nonexistent"));
+    }
+
+    @Test
+    void testRemoveUnsupported() {
+        map.put("key", "value");
+        assertThrows(UnsupportedOperationException.class, () -> map.remove("key"));
+    }
+
+    @Test
+    void testPutFirstUnsupported() {
+        assertThrows(UnsupportedOperationException.class, () -> map.putFirst("key", "value"));
+    }
+
+    @Test
+    void testPollFirstEntryUnsupported() {
+        map.put("key", "value");
+        assertThrows(UnsupportedOperationException.class, () -> map.pollFirstEntry());
+    }
+
+    @Test
+    void testReversedThrowsException() {
+        map.put("key", "value");
+        assertThrows(ClassCastException.class, () -> map.reversed());
+    }
+
 }

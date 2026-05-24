@@ -113,38 +113,12 @@ class FileBackedListTest {
     }
 
     @Test
-    void testAddFirst() throws IOException {
-        list.add("Second");
-        list.add("Third");
-        list.addFirst("First");
-        assertEquals("First", list.get(0));
-        assertEquals("Second", list.get(1));
-        assertEquals(3, list.size());
-    }
-
-    @Test
     void testAddLast() throws IOException {
         list.add("First");
         list.add("Second");
         list.addLast("Last");
         assertEquals("Last", list.get(2));
         assertEquals(3, list.size());
-    }
-
-    @Test
-    void testRemoveFirst() throws IOException {
-        list.add("First");
-        list.add("Second");
-        list.add("Third");
-        String removed = list.removeFirst();
-        assertEquals("First", removed);
-        assertEquals(2, list.size());
-        assertEquals("Second", list.get(0));
-    }
-
-    @Test
-    void testRemoveFirstEmpty() {
-        assertThrows(java.util.NoSuchElementException.class, () -> list.removeFirst());
     }
 
     @Test

@@ -12,7 +12,7 @@ public class BTreeIndex<K extends Serializable & Comparable<K>> {
 
     public static class IndexEntry<K> {
         public final K key;
-        public final long offset;
+        public long offset;
 
         public IndexEntry(K key, long offset) {
             this.key = key;
@@ -70,6 +70,13 @@ public class BTreeIndex<K extends Serializable & Comparable<K>> {
     public void put(K key, long offset) {
         lock.writeLock().lock();
         try {
+            // Check if key already exists and update it
+            IndexEntry<K> existing = findEntry(root, key);
+            if (existing != null) {
+                existing.offset = offset;
+                return;
+            }
+
             IndexEntry<K> entry = new IndexEntry<>(key, offset);
 
             if (root.entries.size() == ORDER - 1) {
@@ -84,6 +91,23 @@ public class BTreeIndex<K extends Serializable & Comparable<K>> {
         } finally {
             lock.writeLock().unlock();
         }
+    }
+
+    private IndexEntry<K> findEntry(BTreeNode<K> node, K key) {
+        int i = 0;
+        while (i < node.entries.size() && key.compareTo(node.entries.get(i).key) > 0) {
+            i++;
+        }
+
+        if (i < node.entries.size() && key.compareTo(node.entries.get(i).key) == 0) {
+            return node.entries.get(i);
+        }
+
+        if (node.isLeaf) {
+            return null;
+        }
+
+        return findEntry(node.children.get(i), key);
     }
 
     private void insertNonFull(BTreeNode<K> node, IndexEntry<K> entry) {
