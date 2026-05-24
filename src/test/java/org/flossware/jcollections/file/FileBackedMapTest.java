@@ -235,4 +235,60 @@ class FileBackedMapTest {
         assertThrows(ClassCastException.class, () -> map.reversed());
     }
 
+    @Test
+    void testMapValues() throws IOException {
+        map.put("k1", "v1");
+        map.put("k2", "v2");
+        map.put("k3", "v3");
+        assertTrue(map.values().contains("v1"));
+        assertTrue(map.values().contains("v2"));
+        assertTrue(map.values().contains("v3"));
+        assertFalse(map.values().contains("v4"));
+    }
+
+    @Test
+    void testEmptyMap() {
+        assertTrue(map.isEmpty());
+        assertEquals(0, map.size());
+        assertFalse(map.containsKey("anything"));
+    }
+
+    @Test
+    void testIsEmpty() {
+        assertTrue(map.isEmpty());
+        map.put("key", "value");
+        assertFalse(map.isEmpty());
+    }
+
+    @Test
+    void testKeySetSize() {
+        map.put("a", "1");
+        map.put("b", "2");
+        assertEquals(2, map.keySet().size());
+    }
+
+    @Test
+    void testKeySetIterator() {
+        map.put("x", "1");
+        map.put("y", "2");
+        int count = 0;
+        for (String key : map.keySet()) {
+            assertNotNull(key);
+            count++;
+        }
+        assertEquals(2, count);
+    }
+
+    @Test
+    void testValuesIterator() {
+        map.put("a", "111");
+        map.put("b", "222");
+        int count = 0;
+        for (String value : map.values()) {
+            assertNotNull(value);
+            count++;
+        }
+        assertEquals(2, count);
+    }
+
 }

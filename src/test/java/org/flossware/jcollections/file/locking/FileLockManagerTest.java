@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FileLockManagerTest {
@@ -84,5 +85,43 @@ class FileLockManagerTest {
         lockManager = new FileLockManager(raf, false);
         lockManager.close();
         assertDoesNotThrow(() -> lockManager.close()); // Should not throw
+    }
+
+    @Test
+    void testClosedChannelException() throws IOException {
+        raf.close(); // Close before creating lock manager
+        assertThrows(IOException.class, () -> new FileLockManager(raf, false));
+    }
+
+    @Test
+    void testUpgradeWhenAlreadyExclusive() throws IOException {
+        lockManager = new FileLockManager(raf, false); // Already exclusive
+        assertTrue(lockManager.isLocked());
+        // Upgrading when already exclusive should be no-op
+        assertDoesNotThrow(() -> lockManager.upgradeToExclusive());
+        assertTrue(lockManager.isLocked());
+    }
+
+    @Test
+    void testReadOnlyFileExclusiveLock() throws IOException {
+        // Create a read-only file
+        if (raf != null) {
+            raf.close();
+        }
+        raf = new RandomAccessFile(testFile, "r");
+        // Trying to get exclusive lock on read-only should fail
+        assertThrows(IOException.class, () -> new FileLockManager(raf, false));
+    }
+
+    @Test
+    void testSharedLockOnReadOnlyFile() throws IOException {
+        // Create a read-only file
+        if (raf != null) {
+            raf.close();
+        }
+        raf = new RandomAccessFile(testFile, "r");
+        // Shared lock on read-only should work
+        lockManager = new FileLockManager(raf, true);
+        assertTrue(lockManager.isLocked());
     }
 }

@@ -99,4 +99,42 @@ class WriteCacheTest {
             }
         }
     }
+
+    @Test
+    void testGetPendingWritesIfNeededWhenNeeded() {
+        for (int i = 0; i < 5; i++) {
+            cache.put(i, "item" + i, ("item" + i).getBytes());
+        }
+        List<WriteCache.CachedEntry<String>> pending = cache.getPendingWritesIfNeeded();
+        assertEquals(5, pending.size());
+    }
+
+    @Test
+    void testGetPendingWritesIfNeededWhenNotNeeded() {
+        cache.put(1L, "item", "item".getBytes());
+        List<WriteCache.CachedEntry<String>> pending = cache.getPendingWritesIfNeeded();
+        assertTrue(pending.isEmpty());
+    }
+
+    @Test
+    void testGetPendingWritesIfNeededByTime() throws InterruptedException {
+        cache.put(1L, "item", "item".getBytes());
+        Thread.sleep(1100); // Wait longer than flush interval
+        List<WriteCache.CachedEntry<String>> pending = cache.getPendingWritesIfNeeded();
+        assertEquals(1, pending.size());
+    }
+
+    @Test
+    void testGetPendingWritesWhenEmpty() {
+        List<WriteCache.CachedEntry<String>> pending = cache.getPendingWrites();
+        assertTrue(pending.isEmpty());
+    }
+
+    @Test
+    void testCloseCallsClear() {
+        cache.put(1L, "x", "x".getBytes());
+        cache.put(2L, "y", "y".getBytes());
+        cache.close();
+        assertEquals(0, cache.size());
+    }
 }

@@ -190,4 +190,51 @@ class FileBackedSetTest {
         set.add("test");
         assertThrows(ClassCastException.class, () -> set.reversed());
     }
+
+    @Test
+    void testEmptySet() {
+        assertTrue(set.isEmpty());
+        assertEquals(0, set.size());
+        assertFalse(set.contains("anything"));
+    }
+
+    @Test
+    void testIteratorOnEmptySet() {
+        int count = 0;
+        for (String item : set) {
+            count++;
+        }
+        assertEquals(0, count);
+    }
+
+    @Test
+    void testToArrayWithType() {
+        set.add("a");
+        set.add("b");
+        String[] array = set.toArray(new String[0]);
+        assertEquals(2, array.length);
+    }
+
+    @Test
+    void testRemoveAll() {
+        set.add("a");
+        set.add("b");
+        set.add("c");
+        java.util.Set<String> toRemove = new java.util.HashSet<>();
+        toRemove.add("a");
+        toRemove.add("c");
+        // removeAll is not supported, should throw
+        assertThrows(UnsupportedOperationException.class, () -> set.removeAll(toRemove));
+    }
+
+    @Test
+    void testRetainAll() {
+        set.add("a");
+        set.add("b");
+        set.add("c");
+        java.util.Set<String> toKeep = new java.util.HashSet<>();
+        toKeep.add("b");
+        // retainAll is not supported, should throw
+        assertThrows(UnsupportedOperationException.class, () -> set.retainAll(toKeep));
+    }
 }

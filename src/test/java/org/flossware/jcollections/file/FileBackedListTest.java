@@ -138,12 +138,6 @@ class FileBackedListTest {
     }
 
     @Test
-    void testGetFilePath() {
-        assertNotNull(list.getFilePath());
-        assertTrue(list.getFilePath().exists());
-    }
-
-    @Test
     void testGetFirstEmpty() {
         assertThrows(java.util.NoSuchElementException.class, () -> list.getFirst());
     }
@@ -186,5 +180,120 @@ class FileBackedListTest {
         }
         assertEquals(10000, list.size());
         assertEquals("LargeItem5000", list.get(5000));
+    }
+
+    @Test
+    void testGetFilePath() {
+        assertNotNull(list.getFilePath());
+        assertTrue(list.getFilePath().exists());
+        assertEquals(testFile, list.getFilePath());
+    }
+
+    @Test
+    void testListWithoutChecksumsOrMmap() throws IOException {
+        File noFeatures = tempDir.resolve("no-features.bin").toFile();
+        FileBackedList<String> plainList = new FileBackedList.Builder<String>(noFeatures)
+            .enableChecksums(false)
+            .enableMmap(false)
+            .enableCache(false)
+            .build();
+
+        plainList.add("item1");
+        plainList.add("item2");
+        assertEquals(2, plainList.size());
+        assertEquals("item1", plainList.get(0));
+        plainList.close();
+    }
+
+    @Test
+    void testIsEmpty() {
+        assertTrue(list.isEmpty());
+        list.add("test");
+        assertFalse(list.isEmpty());
+    }
+
+    @Test
+    void testContains() {
+        list.add("apple");
+        list.add("banana");
+        assertTrue(list.contains("apple"));
+        assertFalse(list.contains("orange"));
+    }
+
+    @Test
+    void testIndexOf() {
+        list.add("first");
+        list.add("second");
+        list.add("third");
+        assertEquals(1, list.indexOf("second"));
+        assertEquals(-1, list.indexOf("missing"));
+    }
+
+    @Test
+    void testIterator() {
+        list.add("a");
+        list.add("b");
+        list.add("c");
+        int count = 0;
+        for (String item : list) {
+            assertNotNull(item);
+            count++;
+        }
+        assertEquals(3, count);
+    }
+
+    @Test
+    void testToArray() {
+        list.add("x");
+        list.add("y");
+        Object[] array = list.toArray();
+        assertEquals(2, array.length);
+        assertEquals("x", array[0]);
+        assertEquals("y", array[1]);
+    }
+
+    @Test
+    void testAddFirstUnsupported() {
+        assertThrows(UnsupportedOperationException.class, () -> list.addFirst("test"));
+    }
+
+    @Test
+    void testRemoveFirstUnsupported() {
+        list.add("test");
+        assertThrows(UnsupportedOperationException.class, () -> list.removeFirst());
+    }
+
+    @Test
+    void testBuilderSharedLock() throws IOException {
+        File sharedFile = tempDir.resolve("shared.bin").toFile();
+        FileBackedList<String> sharedList = new FileBackedList.Builder<String>(sharedFile)
+            .sharedLock(true)
+            .build();
+
+        sharedList.add("item");
+        assertEquals(1, sharedList.size());
+        sharedList.close();
+    }
+
+    @Test
+    void testAddAll() {
+        java.util.List<String> items = java.util.Arrays.asList("a", "b", "c");
+        list.addAll(items);
+        assertEquals(3, list.size());
+        assertTrue(list.containsAll(items));
+    }
+
+    @Test
+    void testClear() {
+        list.add("a");
+        list.add("b");
+        assertThrows(UnsupportedOperationException.class, () -> list.clear());
+    }
+
+    @Test
+    void testRemove() {
+        list.add("a");
+        list.add("b");
+        assertThrows(UnsupportedOperationException.class, () -> list.remove("a"));
     }
 }

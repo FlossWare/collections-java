@@ -113,4 +113,44 @@ class IntListTest {
         assertEquals(-100, list.get(0));
         assertEquals(100, list.get(4));
     }
+
+    @Test
+    void testCloseAndReopen() throws IOException {
+        list.add(111);
+        list.add(222);
+        list.close();
+
+        IntList reopened = new IntList(testFile);
+        assertEquals(2, reopened.size());
+        assertEquals(111, reopened.get(0));
+        assertEquals(222, reopened.get(1));
+        reopened.close();
+    }
+
+    @Test
+    void testMultipleClose() throws IOException {
+        list.add(42);
+        list.close();
+        assertDoesNotThrow(() -> list.close()); // Should not throw on second close
+    }
+
+    @Test
+    void testEmptyList() {
+        assertEquals(0, list.size());
+        assertThrows(IndexOutOfBoundsException.class, () -> list.get(0));
+    }
+
+    @Test
+    void testZeroValue() {
+        list.add(0);
+        assertEquals(0, list.get(0));
+    }
+
+    @Test
+    void testMaxAndMinInt() {
+        list.add(Integer.MAX_VALUE);
+        list.add(Integer.MIN_VALUE);
+        assertEquals(Integer.MAX_VALUE, list.get(0));
+        assertEquals(Integer.MIN_VALUE, list.get(1));
+    }
 }
