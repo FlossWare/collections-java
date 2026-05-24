@@ -14,6 +14,8 @@ import java.io.ObjectOutputStream;
 import java.io.RandomAccessFile;
 import java.io.Serializable;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -171,18 +173,19 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
 
     @Override
     public E get(int index) {
-        Objects.checkIndex(index, size.get());
-
-        if (enableCache && cache != null) {
-            long offset = offsets.get(index);
-            E cached = cache.get(offset);
-            if (cached != null) {
-                return cached;
-            }
-        }
-
         lock.readLock().lock();
         try {
+            // Check index inside lock to prevent race condition
+            Objects.checkIndex(index, size.get());
+
+            if (enableCache && cache != null) {
+                long offset = offsets.get(index);
+                E cached = cache.get(offset);
+                if (cached != null) {
+                    return cached;
+                }
+            }
+
             long offset = offsets.get(index);
             file.seek(offset);
             int length = file.readInt();
@@ -248,11 +251,12 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
     }
 
     private void flushCacheIfNeeded() throws IOException {
-        if (!enableCache || cache == null || !cache.shouldFlush()) {
+        if (!enableCache || cache == null) {
             return;
         }
 
-        List<WriteCache.CachedEntry<E>> pendingWrites = cache.getPendingWrites();
+        // Use atomic check-and-get to avoid race condition
+        List<WriteCache.CachedEntry<E>> pendingWrites = cache.getPendingWritesIfNeeded();
         for (WriteCache.CachedEntry<E> entry : pendingWrites) {
             file.seek(entry.offset);
             file.writeInt(entry.serialized.length);
@@ -349,6 +353,42 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
         }
     }
 
+    /**
+     * Explicitly unmaps the MappedByteBuffer to release file lock.
+     * Uses reflection to call internal cleaner methods.
+     * Important for Windows where mapped files cannot be deleted until unmapped.
+     */
+    private void unmapBuffer() {
+        if (mappedBuffer == null) {
+            return;
+        }
+
+        try {
+            // Try Java 8 approach first
+            Method cleanerMethod = mappedBuffer.getClass().getMethod("cleaner");
+            cleanerMethod.setAccessible(true);
+            Object cleaner = cleanerMethod.invoke(mappedBuffer);
+            if (cleaner != null) {
+                Method cleanMethod = cleaner.getClass().getMethod("clean");
+                cleanMethod.invoke(cleaner);
+            }
+        } catch (Exception e) {
+            // Try Java 9+ approach
+            try {
+                Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+                Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");
+                unsafeField.setAccessible(true);
+                Object unsafe = unsafeField.get(null);
+                Method invokeCleaner = unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
+                invokeCleaner.invoke(unsafe, mappedBuffer);
+            } catch (Exception ex) {
+                // Fall back to letting GC handle it
+            }
+        }
+
+        mappedBuffer = null;
+    }
+
     @Override
     public void close() throws IOException {
         lock.writeLock().lock();
@@ -359,6 +399,7 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
             }
             if (mappedBuffer != null) {
                 mappedBuffer.force();
+                unmapBuffer();
             }
             if (file != null && channel.isOpen()) {
                 file.setLength(actualDataSize);

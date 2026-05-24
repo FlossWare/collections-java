@@ -7,6 +7,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -121,12 +123,49 @@ public class IntList implements AutoCloseable {
         }
     }
 
+    /**
+     * Explicitly unmaps the MappedByteBuffer to release file lock.
+     * Uses reflection to call internal cleaner methods.
+     * Important for Windows where mapped files cannot be deleted until unmapped.
+     */
+    private void unmapBuffer() {
+        if (mappedBuffer == null) {
+            return;
+        }
+
+        try {
+            // Try Java 8 approach first
+            Method cleanerMethod = mappedBuffer.getClass().getMethod("cleaner");
+            cleanerMethod.setAccessible(true);
+            Object cleaner = cleanerMethod.invoke(mappedBuffer);
+            if (cleaner != null) {
+                Method cleanMethod = cleaner.getClass().getMethod("clean");
+                cleanMethod.invoke(cleaner);
+            }
+        } catch (Exception e) {
+            // Try Java 9+ approach
+            try {
+                Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+                Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");
+                unsafeField.setAccessible(true);
+                Object unsafe = unsafeField.get(null);
+                Method invokeCleaner = unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
+                invokeCleaner.invoke(unsafe, mappedBuffer);
+            } catch (Exception ex) {
+                // Fall back to letting GC handle it
+            }
+        }
+
+        mappedBuffer = null;
+    }
+
     @Override
     public void close() throws IOException {
         lock.writeLock().lock();
         try {
             if (mappedBuffer != null) {
                 mappedBuffer.force();
+                unmapBuffer();
             }
             long actualSize = FileHeader.getHeaderSize() + size.get() * INT_SIZE;
             if (file != null && channel.isOpen()) {

@@ -76,10 +76,42 @@ public class WriteCache<T extends Serializable> implements AutoCloseable {
     public List<CachedEntry<T>> getPendingWrites() {
         lock.writeLock().lock();
         try {
+            // Check again under write lock to avoid race condition
+            if (pendingWrites.isEmpty()) {
+                return new ArrayList<>();
+            }
             List<CachedEntry<T>> writes = new ArrayList<>(pendingWrites);
             pendingWrites.clear();
             lastFlushTime = System.currentTimeMillis();
             return writes;
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Atomically checks if flush is needed and returns pending writes.
+     * Thread-safe alternative to calling shouldFlush() then getPendingWrites().
+     * @return List of pending writes if flush is needed, empty list otherwise
+     */
+    public List<CachedEntry<T>> getPendingWritesIfNeeded() {
+        lock.writeLock().lock();
+        try {
+            // Atomic check-and-get under write lock
+            if (pendingWrites.size() >= maxCacheSize) {
+                List<CachedEntry<T>> writes = new ArrayList<>(pendingWrites);
+                pendingWrites.clear();
+                lastFlushTime = System.currentTimeMillis();
+                return writes;
+            }
+            long elapsed = System.currentTimeMillis() - lastFlushTime;
+            if (elapsed >= maxCacheTimeMs && !pendingWrites.isEmpty()) {
+                List<CachedEntry<T>> writes = new ArrayList<>(pendingWrites);
+                pendingWrites.clear();
+                lastFlushTime = System.currentTimeMillis();
+                return writes;
+            }
+            return new ArrayList<>();
         } finally {
             lock.writeLock().unlock();
         }

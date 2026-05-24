@@ -58,8 +58,16 @@ jobs:
       - name: Ensure latests depenendencies in pom.xml
         run: "mvn -Dincludes='org.junit.jupiter:*' -DgenerateBackupPoms=false versions:update-properties"
 
-      - name: Building
+      - name: Building and Testing
         run: "mvn -U clean install"
+
+      - name: Verify build success
+        run: |
+          if [ ! -f target/jcollections-*.jar ]; then
+            echo "Build failed - artifact not found"
+            exit 1
+          fi
+          echo "Build succeeded - deploying to packagecloud.io"
 
       - name: Deploy to packagecloud.io
         run: "mvn -DskipTests deploy"
