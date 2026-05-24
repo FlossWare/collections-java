@@ -7,7 +7,7 @@
     <groupId>org.flossware</groupId>
     <artifactId>jcollections</artifactId>
 
-    <version>1.6</version>
+    <version>1.7</version>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
