@@ -161,9 +161,19 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
         if (useBTreeIndex && index != null && key instanceof Comparable) {
             @SuppressWarnings("unchecked")
             K k = (K) key;
-            return index.get(k) != null;
+            Long offset = index.get(k);
+            if (offset != null) {
+                // Verify the key actually exists at that offset
+                try {
+                    AbstractMap.SimpleEntry<K, V> entry = entryList.get(offset.intValue());
+                    return Objects.equals(entry.getKey(), key);
+                } catch (IndexOutOfBoundsException e) {
+                    // Index is out of sync - fall through to linear search
+                }
+            }
         }
 
+        // Linear search fallback
         for (Map.Entry<K, V> entry : entryList) {
             if (Objects.equals(entry.getKey(), key)) {
                 return true;
@@ -174,6 +184,10 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
 
     @Override
     public V put(K key, V value) {
+        if (isView) {
+            throw new UnsupportedOperationException("Modifications not supported on reversed views");
+        }
+
         V oldValue = get(key);
         int newIndex = entryList.size();
         entryList.add(new AbstractMap.SimpleEntry<>(key, value));
@@ -203,9 +217,15 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
         File originalFile = entryList.getFilePath();
         File tempFile = File.createTempFile("jcollections-compact", ".tmp", originalFile.getParentFile());
 
+        // Save settings before closing to avoid accessing closed object
+        boolean hasChecksums = entryList.getHeader().hasFlag(
+            org.flossware.jcollections.file.format.FileHeader.FLAG_CHECKSUMS_ENABLED);
+        boolean hasMmap = entryList.getHeader().hasFlag(
+            org.flossware.jcollections.file.format.FileHeader.FLAG_MMAP_ENABLED);
+
         try (FileBackedMap<K, V> tempMap = new Builder<K, V>(tempFile)
-                .enableChecksums(entryList.getHeader().hasFlag(org.flossware.jcollections.file.format.FileHeader.FLAG_CHECKSUMS_ENABLED))
-                .enableMmap(entryList.getHeader().hasFlag(org.flossware.jcollections.file.format.FileHeader.FLAG_MMAP_ENABLED))
+                .enableChecksums(hasChecksums)
+                .enableMmap(hasMmap)
                 .enableBTreeIndex(useBTreeIndex)
                 .build()) {
 
@@ -228,11 +248,11 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
             throw new IOException("Failed to rename temp file to original file during compaction");
         }
 
-        // Reopen the compacted file
+        // Reopen the compacted file with saved settings
         FileBackedList.Builder<AbstractMap.SimpleEntry<K, V>> listBuilder =
             new FileBackedList.Builder<AbstractMap.SimpleEntry<K, V>>(originalFile)
-                .enableChecksums(entryList.getHeader().hasFlag(org.flossware.jcollections.file.format.FileHeader.FLAG_CHECKSUMS_ENABLED))
-                .enableMmap(entryList.getHeader().hasFlag(org.flossware.jcollections.file.format.FileHeader.FLAG_MMAP_ENABLED))
+                .enableChecksums(hasChecksums)
+                .enableMmap(hasMmap)
                 .enableCache(true);
 
         this.entryList = listBuilder.build();

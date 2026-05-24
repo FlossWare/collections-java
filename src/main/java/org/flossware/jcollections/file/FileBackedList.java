@@ -139,19 +139,35 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
                 file.seek(position);
                 int length = file.readInt();
 
-                if (length < 0 || length > 100_000_000) {
-                    break;
+                // Validate length field
+                if (length < 0) {
+                    throw new IOException("Corrupted entry at position " + position +
+                        ": invalid negative length " + length);
                 }
 
                 long checksumSize = header.hasFlag(FileHeader.FLAG_CHECKSUMS_ENABLED) ? 8 : 0;
                 long entrySize = 4 + checksumSize + length;
 
+                // Check if entry would exceed file bounds
                 if (position + entrySize > actualDataSize) {
-                    break;
+                    throw new IOException("Corrupted entry at position " + position +
+                        ": entry size " + entrySize + " bytes exceeds file bounds. " +
+                        "File may be truncated or corrupted.");
                 }
 
+                // Verify checksum if enabled
                 if (header.hasFlag(FileHeader.FLAG_CHECKSUMS_ENABLED)) {
-                    file.readLong();
+                    long storedChecksum = file.readLong();
+
+                    // Read and verify the data
+                    byte[] data = new byte[length];
+                    file.readFully(data);
+
+                    if (!EntryChecksum.verifyChecksum(data, storedChecksum)) {
+                        throw new IOException("Checksum mismatch at position " + position +
+                            ". File may be corrupted. Expected checksum: " + storedChecksum +
+                            ", actual: " + EntryChecksum.calculateChecksum(data));
+                    }
                 }
 
                 offsets.add(position);
@@ -187,18 +203,44 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
             }
 
             long offset = offsets.get(index);
-            file.seek(offset);
-            int length = file.readInt();
-            long storedChecksum = enableChecksums ? file.readLong() : 0;
 
-            byte[] buffer = new byte[length];
-            file.readFully(buffer);
+            // Use memory-mapped buffer if available for better performance
+            if (enableMmap && mappedBuffer != null) {
+                int pos = (int) offset;
+                int length = mappedBuffer.getInt(pos);
+                pos += 4;
 
-            if (enableChecksums && !EntryChecksum.verifyChecksum(buffer, storedChecksum)) {
-                throw new IOException("Checksum mismatch at index " + index);
+                long storedChecksum = 0;
+                if (enableChecksums) {
+                    storedChecksum = mappedBuffer.getLong(pos);
+                    pos += 8;
+                }
+
+                byte[] buffer = new byte[length];
+                for (int i = 0; i < length; i++) {
+                    buffer[i] = mappedBuffer.get(pos + i);
+                }
+
+                if (enableChecksums && !EntryChecksum.verifyChecksum(buffer, storedChecksum)) {
+                    throw new IOException("Checksum mismatch at index " + index);
+                }
+
+                return deserialize(buffer);
+            } else {
+                // Fallback to RandomAccessFile
+                file.seek(offset);
+                int length = file.readInt();
+                long storedChecksum = enableChecksums ? file.readLong() : 0;
+
+                byte[] buffer = new byte[length];
+                file.readFully(buffer);
+
+                if (enableChecksums && !EntryChecksum.verifyChecksum(buffer, storedChecksum)) {
+                    throw new IOException("Checksum mismatch at index " + index);
+                }
+
+                return deserialize(buffer);
             }
-
-            return deserialize(buffer);
         } catch (IOException | ClassNotFoundException e) {
             throw new UncheckedIOException(new IOException(e));
         } finally {

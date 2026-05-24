@@ -13,6 +13,7 @@ public class WriteCache<T extends Serializable> implements AutoCloseable {
     private final List<CachedEntry<T>> pendingWrites;
     private final int maxCacheSize;
     private final long maxCacheTimeMs;
+    private final int maxPendingWrites;
     private final ReentrantReadWriteLock lock;
     private long lastFlushTime;
 
@@ -33,6 +34,8 @@ public class WriteCache<T extends Serializable> implements AutoCloseable {
     public WriteCache(int maxCacheSize, long maxCacheTimeMs) {
         this.maxCacheSize = maxCacheSize;
         this.maxCacheTimeMs = maxCacheTimeMs;
+        // Limit pending writes to 10x cache size to prevent unbounded memory growth
+        this.maxPendingWrites = maxCacheSize * 10;
         this.cache = new LinkedHashMap<>(maxCacheSize, 0.75f, true);
         this.pendingWrites = new ArrayList<>();
         this.lock = new ReentrantReadWriteLock();
@@ -52,6 +55,13 @@ public class WriteCache<T extends Serializable> implements AutoCloseable {
     public void put(long offset, T value, byte[] serialized) {
         lock.writeLock().lock();
         try {
+            // Prevent unbounded memory growth by enforcing hard limit on pending writes
+            if (pendingWrites.size() >= maxPendingWrites) {
+                throw new IllegalStateException(
+                    "Too many pending writes (" + pendingWrites.size() + " >= " + maxPendingWrites + "). " +
+                    "Call flush() to persist data before continuing.");
+            }
+
             CachedEntry<T> entry = new CachedEntry<>(offset, value, serialized);
             cache.put(offset, entry);
             pendingWrites.add(entry);
