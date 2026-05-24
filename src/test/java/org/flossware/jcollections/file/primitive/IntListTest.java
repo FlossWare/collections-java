@@ -82,4 +82,35 @@ class IntListTest {
         assertThrows(IndexOutOfBoundsException.class, () -> list.get(1));
         assertThrows(IndexOutOfBoundsException.class, () -> list.get(-1));
     }
+
+    @Test
+    void testLargeCapacity() throws IOException {
+        for (int i = 0; i < 10000; i++) {
+            list.add(i);
+        }
+        assertEquals(10000, list.size());
+        assertEquals(5000, list.get(5000));
+    }
+
+    @Test
+    void testMultipleFlush() throws IOException {
+        list.add(1);
+        list.add(2);
+        list.flush();
+        list.add(3);
+        list.add(4);
+        list.flush();
+        assertEquals(4, list.size());
+    }
+
+    @Test
+    void testNegativeNumbers() throws IOException {
+        list.add(-100);
+        list.add(-1);
+        list.add(0);
+        list.add(1);
+        list.add(100);
+        assertEquals(-100, list.get(0));
+        assertEquals(100, list.get(4));
+    }
 }

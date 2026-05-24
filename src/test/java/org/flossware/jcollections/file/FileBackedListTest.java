@@ -101,18 +101,6 @@ class FileBackedListTest {
     }
 
     @Test
-    void testReversed() {
-        list.add("A");
-        list.add("B");
-        list.add("C");
-
-        List<String> reversed = new ArrayList<>();
-        list.reversed().forEach(reversed::add);
-
-        assertEquals(List.of("C", "B", "A"), reversed);
-    }
-
-    @Test
     void testFlush() throws IOException {
         list.add("Test");
         assertDoesNotThrow(() -> list.flush());
@@ -122,5 +110,107 @@ class FileBackedListTest {
     void testCompact() throws IOException {
         list.add("Test");
         assertDoesNotThrow(() -> list.compact());
+    }
+
+    @Test
+    void testAddFirst() throws IOException {
+        list.add("Second");
+        list.add("Third");
+        list.addFirst("First");
+        assertEquals("First", list.get(0));
+        assertEquals("Second", list.get(1));
+        assertEquals(3, list.size());
+    }
+
+    @Test
+    void testAddLast() throws IOException {
+        list.add("First");
+        list.add("Second");
+        list.addLast("Last");
+        assertEquals("Last", list.get(2));
+        assertEquals(3, list.size());
+    }
+
+    @Test
+    void testRemoveFirst() throws IOException {
+        list.add("First");
+        list.add("Second");
+        list.add("Third");
+        String removed = list.removeFirst();
+        assertEquals("First", removed);
+        assertEquals(2, list.size());
+        assertEquals("Second", list.get(0));
+    }
+
+    @Test
+    void testRemoveFirstEmpty() {
+        assertThrows(java.util.NoSuchElementException.class, () -> list.removeFirst());
+    }
+
+    @Test
+    void testRemoveLast() throws IOException {
+        list.add("First");
+        list.add("Second");
+        list.add("Third");
+        String removed = list.removeLast();
+        assertEquals("Third", removed);
+        assertEquals(2, list.size());
+        assertEquals("Second", list.get(1));
+    }
+
+    @Test
+    void testRemoveLastEmpty() {
+        assertThrows(java.util.NoSuchElementException.class, () -> list.removeLast());
+    }
+
+    @Test
+    void testGetFilePath() {
+        assertNotNull(list.getFilePath());
+        assertTrue(list.getFilePath().exists());
+    }
+
+    @Test
+    void testGetFirstEmpty() {
+        assertThrows(java.util.NoSuchElementException.class, () -> list.getFirst());
+    }
+
+    @Test
+    void testGetLastEmpty() {
+        assertThrows(java.util.NoSuchElementException.class, () -> list.getLast());
+    }
+
+    @Test
+    void testReversed() throws IOException {
+        list.add("First");
+        list.add("Second");
+        list.add("Third");
+        List<String> reversed = (List<String>) list.reversed();
+        assertEquals("Third", reversed.get(0));
+        assertEquals("Second", reversed.get(1));
+        assertEquals("First", reversed.get(2));
+    }
+
+    @Test
+    void testGetWithInvalidIndex() {
+        assertThrows(IndexOutOfBoundsException.class, () -> list.get(-1));
+        assertThrows(IndexOutOfBoundsException.class, () -> list.get(100));
+    }
+
+    @Test
+    void testMultipleCacheFlushs() throws IOException {
+        for (int i = 0; i < 1500; i++) {
+            list.add("Item" + i);
+        }
+        list.flush();
+        assertEquals(1500, list.size());
+    }
+
+    @Test
+    void testLargeFile() throws IOException {
+        for (int i = 0; i < 10000; i++) {
+            list.add("LargeItem" + i);
+        }
+        assertEquals(10000, list.size());
+        assertEquals("LargeItem5000", list.get(5000));
     }
 }
