@@ -4,13 +4,13 @@ File-backed Java Collections that persist data to disk, leveraging Java 21's Seq
 
 [![Java](https://img.shields.io/badge/Java-21-blue.svg)](https://openjdk.java.net/projects/jdk/21/)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-1.5-brightgreen.svg)]()
 
 ## Overview
 
 jcollections provides persistent collection implementations that store their data in files on disk using Java serialization. This library includes enterprise features such as memory-mapped I/O, B-tree indexing, checksums, caching, compaction, file locking, and primitive type support.
 
-**Status**: Version 1.0 - Production ready with all enhanced features implemented and working!
+**Status**: Version 1.5 - Production ready with all enhanced features implemented and working!
 
 ## Features
 
