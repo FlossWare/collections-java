@@ -79,8 +79,11 @@ public class IntList implements AutoCloseable {
 
         lock.readLock().lock();
         try {
-            int position = FileHeader.getHeaderSize() + index * INT_SIZE;
-            return mappedBuffer.getInt(position);
+            long position = FileHeader.getHeaderSize() + (long) index * INT_SIZE;
+            if (position > Integer.MAX_VALUE) {
+                throw new IllegalStateException("Position overflow: list too large");
+            }
+            return mappedBuffer.getInt((int) position);
         } finally {
             lock.readLock().unlock();
         }
@@ -90,7 +93,10 @@ public class IntList implements AutoCloseable {
         lock.writeLock().lock();
         try {
             int index = size.get();
-            int position = FileHeader.getHeaderSize() + index * INT_SIZE;
+            long position = FileHeader.getHeaderSize() + (long) index * INT_SIZE;
+            if (position > Integer.MAX_VALUE) {
+                throw new IllegalStateException("Position overflow: list too large");
+            }
 
             long requiredSize = position + INT_SIZE;
             if (requiredSize > file.length()) {
@@ -99,7 +105,7 @@ public class IntList implements AutoCloseable {
                 remapBuffer();
             }
 
-            mappedBuffer.putInt(position, value);
+            mappedBuffer.putInt((int) position, value);
             size.incrementAndGet();
         } catch (IOException e) {
             throw new UncheckedIOException(e);

@@ -113,7 +113,7 @@ public class FileBackedSet<E extends Serializable & Comparable<E>> extends Abstr
 
     @Override
     public void addFirst(E e) {
-        backingMap.putFirst(e, PRESENT);
+        throw new UnsupportedOperationException("addFirst not supported (requires rewriting file)");
     }
 
     @Override
@@ -141,8 +141,7 @@ public class FileBackedSet<E extends Serializable & Comparable<E>> extends Abstr
 
     @Override
     public E removeFirst() {
-        var entry = backingMap.pollFirstEntry();
-        return (entry != null) ? entry.getKey() : null;
+        throw new UnsupportedOperationException("removeFirst not supported (requires rewriting file)");
     }
 
     @Override
