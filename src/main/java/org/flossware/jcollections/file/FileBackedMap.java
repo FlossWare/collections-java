@@ -1,6 +1,8 @@
 package org.flossware.jcollections.file;
 
 import org.flossware.jcollections.file.index.BTreeIndex;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -16,6 +18,8 @@ import java.util.SequencedMap;
 import java.util.Set;
 
 public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Serializable> extends AbstractMap<K, V> implements SequencedMap<K, V>, AutoCloseable {
+    private static final Logger logger = LoggerFactory.getLogger(FileBackedMap.class);
+
     private FileBackedList<AbstractMap.SimpleEntry<K, V>> entryList;
     private final BTreeIndex<K> index;
     private final boolean useBTreeIndex;
@@ -112,15 +116,19 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
             return;
         }
 
+        logger.debug("Rebuilding BTree index from {} entries", entryList.size());
         index.clear();
+        int indexed = 0;
         for (int i = 0; i < entryList.size(); i++) {
             AbstractMap.SimpleEntry<K, V> entry = entryList.get(i);
             // Only add if key not already in index (first occurrence wins)
             // This matches linear search behavior which returns first match
             if (index.get(entry.getKey()) == null) {
                 index.put(entry.getKey(), i);
+                indexed++;
             }
         }
+        logger.debug("BTree index rebuilt: {} unique keys indexed", indexed);
     }
 
     @Override
@@ -225,6 +233,10 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
             throw new UnsupportedOperationException("compact not supported on views");
         }
 
+        long originalSize = entryList.size();
+        long originalFileSize = entryList.getFilePath().length();
+        logger.info("Starting compaction: {} entries, {} bytes", originalSize, originalFileSize);
+
         Map<K, V> uniqueEntries = new LinkedHashMap<>();
         for (Map.Entry<K, V> entry : entryList) {
             uniqueEntries.put(entry.getKey(), entry.getValue());
@@ -277,6 +289,13 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
         if (useBTreeIndex) {
             rebuildIndex();
         }
+
+        long newSize = entryList.size();
+        long newFileSize = originalFile.length();
+        long savedBytes = originalFileSize - newFileSize;
+        long removedDuplicates = originalSize - newSize;
+        logger.info("Compaction complete: {} unique entries (removed {} duplicates), saved {} bytes ({} -> {})",
+            newSize, removedDuplicates, savedBytes, originalFileSize, newFileSize);
     }
 
     public void flush() throws IOException {

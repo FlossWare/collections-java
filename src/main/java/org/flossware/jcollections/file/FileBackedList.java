@@ -4,6 +4,8 @@ import org.flossware.jcollections.file.cache.WriteCache;
 import org.flossware.jcollections.file.format.EntryChecksum;
 import org.flossware.jcollections.file.format.FileHeader;
 import org.flossware.jcollections.file.locking.FileLockManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -28,6 +30,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class FileBackedList<E extends Serializable> extends AbstractList<E> implements SequencedCollection<E>, AutoCloseable {
+    private static final Logger logger = LoggerFactory.getLogger(FileBackedList.class);
+
     // Maximum size for memory-mapped files (~2GB, safe for 32-bit and 64-bit JVMs)
     private static final long MAX_MAPPED_SIZE = Integer.MAX_VALUE;
 
@@ -130,8 +134,12 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
 
             this.header = new FileHeader(FileHeader.VERSION_2, flags);
             header.write(file);
+            logger.info("Created new file-backed list: path={}, checksums={}, mmap={}, cache={}",
+                builder.path, enableChecksums, enableMmap, enableCache);
         } else {
             this.header = existingHeader;
+            logger.info("Opened existing file-backed list: path={}, version={}, size={}",
+                builder.path, existingHeader.getVersion(), file.length());
         }
 
         this.actualDataSize = file.length();
@@ -189,6 +197,7 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
                 position += entrySize;
                 size.incrementAndGet();
             }
+            logger.debug("Loaded {} entries from file, total size: {} bytes", size.get(), actualDataSize);
         } finally {
             lock.writeLock().unlock();
         }
@@ -201,12 +210,14 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
         long fileSize = Math.max(file.length(), 1024 * 1024);
 
         if (fileSize > MAX_MAPPED_SIZE) {
+            logger.error("File too large to memory-map: {} bytes (max: {} bytes)", fileSize, MAX_MAPPED_SIZE);
             throw new IOException("File too large to memory-map: " + fileSize +
                 " bytes (max: " + MAX_MAPPED_SIZE + " bytes). " +
                 "Consider disabling memory-mapped I/O for very large files.");
         }
 
         this.mappedBuffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, fileSize);
+        logger.debug("Remapped buffer: size={} bytes", fileSize);
     }
 
     @Override
