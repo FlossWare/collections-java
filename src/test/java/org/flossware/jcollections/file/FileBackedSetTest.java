@@ -237,4 +237,30 @@ class FileBackedSetTest {
         // retainAll is not supported, should throw
         assertThrows(UnsupportedOperationException.class, () -> set.retainAll(toKeep));
     }
+
+    @Test
+    void testBuilderNullPath() {
+        assertThrows(IllegalArgumentException.class, () ->
+            new FileBackedSet.Builder<String>(null).build());
+    }
+
+    @Test
+    void testBuilderDirectoryPath() {
+        assertThrows(IllegalArgumentException.class, () ->
+            new FileBackedSet.Builder<String>(tempDir.toFile()).build());
+    }
+
+    @Test
+    void testBuilderNegativeCacheSize() {
+        File validFile = tempDir.resolve("cache-size-test.bin").toFile();
+        assertThrows(IllegalArgumentException.class, () ->
+            new FileBackedSet.Builder<String>(validFile).cacheSize(-1).build());
+    }
+
+    @Test
+    void testBuilderNegativeFlushInterval() {
+        File validFile = tempDir.resolve("flush-interval-test.bin").toFile();
+        assertThrows(IllegalArgumentException.class, () ->
+            new FileBackedSet.Builder<String>(validFile).cacheFlushMs(-100).build());
+    }
 }

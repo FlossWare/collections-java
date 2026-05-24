@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WriteCacheTest {
@@ -136,5 +137,20 @@ class WriteCacheTest {
         cache.put(2L, "y", "y".getBytes());
         cache.close();
         assertEquals(0, cache.size());
+    }
+
+    @Test
+    void testMaxPendingWritesException() {
+        WriteCache<String> smallCache = new WriteCache<>(2, 10000);
+        // maxPendingWrites = cacheSize * 10 = 20
+
+        // Add entries without flushing
+        for (int i = 0; i < 20; i++) {
+            smallCache.put(i, "value" + i, ("value" + i).getBytes());
+        }
+
+        // 21st entry should throw exception
+        assertThrows(IllegalStateException.class, () ->
+            smallCache.put(20L, "overflow", "overflow".getBytes()));
     }
 }

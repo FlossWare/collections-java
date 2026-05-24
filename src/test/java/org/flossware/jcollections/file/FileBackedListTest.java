@@ -296,4 +296,44 @@ class FileBackedListTest {
         list.add("b");
         assertThrows(UnsupportedOperationException.class, () -> list.remove("a"));
     }
+
+    @Test
+    void testBuilderNullPath() {
+        assertThrows(IllegalArgumentException.class, () ->
+            new FileBackedList.Builder<String>(null).build());
+    }
+
+    @Test
+    void testBuilderDirectoryPath() {
+        assertThrows(IllegalArgumentException.class, () ->
+            new FileBackedList.Builder<String>(tempDir.toFile()).build());
+    }
+
+    @Test
+    void testBuilderNegativeCacheSize() {
+        File validFile = tempDir.resolve("cache-size-test.bin").toFile();
+        assertThrows(IllegalArgumentException.class, () ->
+            new FileBackedList.Builder<String>(validFile).cacheSize(-1).build());
+    }
+
+    @Test
+    void testBuilderZeroCacheSize() {
+        File validFile = tempDir.resolve("cache-size-zero.bin").toFile();
+        assertThrows(IllegalArgumentException.class, () ->
+            new FileBackedList.Builder<String>(validFile).cacheSize(0).build());
+    }
+
+    @Test
+    void testBuilderNegativeFlushInterval() {
+        File validFile = tempDir.resolve("flush-interval-test.bin").toFile();
+        assertThrows(IllegalArgumentException.class, () ->
+            new FileBackedList.Builder<String>(validFile).cacheFlushMs(-1000).build());
+    }
+
+    @Test
+    void testBuilderZeroFlushInterval() {
+        File validFile = tempDir.resolve("flush-interval-zero.bin").toFile();
+        assertThrows(IllegalArgumentException.class, () ->
+            new FileBackedList.Builder<String>(validFile).cacheFlushMs(0).build());
+    }
 }
