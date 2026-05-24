@@ -17,6 +17,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class IntList implements AutoCloseable {
     private static final int INT_SIZE = 4;
+    // Maximum size for memory-mapped files (~2GB, safe for 32-bit and 64-bit JVMs)
+    private static final long MAX_MAPPED_SIZE = Integer.MAX_VALUE;
+
     private final RandomAccessFile file;
     private final FileChannel channel;
     private MappedByteBuffer mappedBuffer;
@@ -53,11 +56,17 @@ public class IntList implements AutoCloseable {
         if (mappedBuffer != null) {
             mappedBuffer.force();
         }
-        long minSize = FileHeader.getHeaderSize() + size.get() * INT_SIZE;
+        long minSize = FileHeader.getHeaderSize() + (long) size.get() * INT_SIZE;
         long fileSize = Math.max(file.length(), minSize + 1024 * INT_SIZE);
 
         if (file.length() < minSize) {
             file.setLength(minSize);
+        }
+
+        if (fileSize > MAX_MAPPED_SIZE) {
+            throw new IOException("File too large to memory-map: " + fileSize +
+                " bytes (max: " + MAX_MAPPED_SIZE + " bytes). " +
+                "Maximum IntList size is " + (MAX_MAPPED_SIZE / INT_SIZE) + " integers.");
         }
 
         this.mappedBuffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, fileSize);

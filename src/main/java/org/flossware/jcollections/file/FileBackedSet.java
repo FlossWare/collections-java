@@ -23,6 +23,12 @@ public class FileBackedSet<E extends Serializable & Comparable<E>> extends Abstr
         private long cacheFlushMs = 5000;
 
         public Builder(File path) {
+            if (path == null) {
+                throw new IllegalArgumentException("File path cannot be null");
+            }
+            if (path.exists() && path.isDirectory()) {
+                throw new IllegalArgumentException("Path must not be a directory: " + path);
+            }
             this.path = path;
         }
 
@@ -47,11 +53,17 @@ public class FileBackedSet<E extends Serializable & Comparable<E>> extends Abstr
         }
 
         public Builder<E> cacheSize(int size) {
+            if (size <= 0) {
+                throw new IllegalArgumentException("Cache size must be positive, got: " + size);
+            }
             this.cacheSize = size;
             return this;
         }
 
         public Builder<E> cacheFlushMs(long ms) {
+            if (ms <= 0) {
+                throw new IllegalArgumentException("Cache flush interval must be positive, got: " + ms);
+            }
             this.cacheFlushMs = ms;
             return this;
         }

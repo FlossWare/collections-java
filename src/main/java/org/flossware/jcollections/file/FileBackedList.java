@@ -28,6 +28,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class FileBackedList<E extends Serializable> extends AbstractList<E> implements SequencedCollection<E>, AutoCloseable {
+    // Maximum size for memory-mapped files (~2GB, safe for 32-bit and 64-bit JVMs)
+    private static final long MAX_MAPPED_SIZE = Integer.MAX_VALUE;
+
     private final File filePath;
     private final RandomAccessFile file;
     private final FileChannel channel;
@@ -53,6 +56,12 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
         private boolean sharedLock = false;
 
         public Builder(File path) {
+            if (path == null) {
+                throw new IllegalArgumentException("File path cannot be null");
+            }
+            if (path.exists() && path.isDirectory()) {
+                throw new IllegalArgumentException("Path must not be a directory: " + path);
+            }
             this.path = path;
         }
 
@@ -72,11 +81,17 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
         }
 
         public Builder<E> cacheSize(int size) {
+            if (size <= 0) {
+                throw new IllegalArgumentException("Cache size must be positive, got: " + size);
+            }
             this.cacheSize = size;
             return this;
         }
 
         public Builder<E> cacheFlushMs(long ms) {
+            if (ms <= 0) {
+                throw new IllegalArgumentException("Cache flush interval must be positive, got: " + ms);
+            }
             this.cacheFlushMs = ms;
             return this;
         }
@@ -184,6 +199,13 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
             mappedBuffer.force();
         }
         long fileSize = Math.max(file.length(), 1024 * 1024);
+
+        if (fileSize > MAX_MAPPED_SIZE) {
+            throw new IOException("File too large to memory-map: " + fileSize +
+                " bytes (max: " + MAX_MAPPED_SIZE + " bytes). " +
+                "Consider disabling memory-mapped I/O for very large files.");
+        }
+
         this.mappedBuffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, fileSize);
     }
 

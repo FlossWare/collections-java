@@ -31,6 +31,12 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
         private long cacheFlushMs = 5000;
 
         public Builder(File path) {
+            if (path == null) {
+                throw new IllegalArgumentException("File path cannot be null");
+            }
+            if (path.exists() && path.isDirectory()) {
+                throw new IllegalArgumentException("Path must not be a directory: " + path);
+            }
             this.path = path;
         }
 
@@ -55,11 +61,17 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
         }
 
         public Builder<K, V> cacheSize(int size) {
+            if (size <= 0) {
+                throw new IllegalArgumentException("Cache size must be positive, got: " + size);
+            }
             this.cacheSize = size;
             return this;
         }
 
         public Builder<K, V> cacheFlushMs(long ms) {
+            if (ms <= 0) {
+                throw new IllegalArgumentException("Cache flush interval must be positive, got: " + ms);
+            }
             this.cacheFlushMs = ms;
             return this;
         }
@@ -103,7 +115,11 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
         index.clear();
         for (int i = 0; i < entryList.size(); i++) {
             AbstractMap.SimpleEntry<K, V> entry = entryList.get(i);
-            index.put(entry.getKey(), i);
+            // Only add if key not already in index (first occurrence wins)
+            // This matches linear search behavior which returns first match
+            if (index.get(entry.getKey()) == null) {
+                index.put(entry.getKey(), i);
+            }
         }
     }
 
