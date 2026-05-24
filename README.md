@@ -4,13 +4,15 @@ File-backed Java Collections that persist data to disk, leveraging Java 21's Seq
 
 [![Java](https://img.shields.io/badge/Java-21-blue.svg)](https://openjdk.java.net/projects/jdk/21/)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.5-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-1.6-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-114%20passing-success.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-88%25%20%2F%2071%25-yellow.svg)]()
 
 ## Overview
 
 jcollections provides persistent collection implementations that store their data in files on disk using Java serialization. This library includes enterprise features such as memory-mapped I/O, B-tree indexing, checksums, caching, compaction, file locking, and primitive type support.
 
-**Status**: Version 1.5 - Production ready with all enhanced features implemented and working!
+**Status**: Version 1.6 - Production ready with all features implemented and comprehensive test coverage!
 
 ## Features
 
@@ -247,7 +249,7 @@ Every push to the `main` branch automatically triggers:
 
 1. **Version Increment**: Minor version auto-incremented (e.g., 1.0 → 1.1)
 2. **Dependency Updates**: JUnit and other dependencies updated to latest versions
-3. **Build and Test**: Full Maven build with all 20 tests
+3. **Build and Test**: Full Maven build with comprehensive test suite (114 tests, 88% coverage)
 4. **Deploy**: Artifact published to [packagecloud.io/flossware/java](https://packagecloud.io/flossware/java)
 5. **Git Tag**: Automatic commit and tag creation (e.g., `v1.1`)
 
@@ -332,6 +334,17 @@ Pull requests welcome! Priority areas:
 
 ## Version History
 
+- **1.6** (2026-05-23) - Major test coverage expansion and critical bug fixes
+  - Expanded test suite from 20 to 114 tests
+  - Increased code coverage to 88% instruction / 71% branch
+  - Fixed FileBackedSet.add() to properly prevent duplicates
+  - Fixed BTreeIndex to support key updates
+  - Added comprehensive builder option tests
+  - Added tests for unsupported operations
+  - Removed invalid tests for append-only design limitations
+  - Cross-platform version bumping scripts (PowerShell, Batch)
+  - Added CODE_OF_CONDUCT.md
+
 - **1.0** (2026-05-14) - Initial release with enterprise features
   - FileBackedList, Map, Set with Java 21 SequencedCollection support
   - File format versioning with magic bytes and headers
@@ -343,7 +356,6 @@ Pull requests welcome! Priority areas:
   - Primitive type support (IntList)
   - Compaction for space reclamation
   - Variable-length serialization
-  - 20 passing tests
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
 
