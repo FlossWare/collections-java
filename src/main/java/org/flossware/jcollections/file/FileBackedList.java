@@ -350,6 +350,14 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
         }
     }
 
+    /**
+     * Flushes pending writes to disk. Lists do not support true compaction
+     * since they don't have duplicate entries to remove like maps do.
+     * For space reclamation in maps, see {@link FileBackedMap#compact()}.
+     *
+     * @throws IOException if flush fails
+     * @see #flush()
+     */
     public void compact() throws IOException {
         lock.writeLock().lock();
         try {
