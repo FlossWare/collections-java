@@ -1,0 +1,498 @@
+name: Maven Quality Gate
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run daily at 2 AM UTC to catch dependency vulnerabilities
+    - cron: '0 2 * * *'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Run Maven verify (all quality checks)
+        id: maven-verify
+        continue-on-error: true
+        run: |
+          mvn clean verify -B -e 2>&1 | tee maven-verify.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+      - name: Generate quality reports
+        if: always()
+        run: |
+          mvn site -DskipTests || true
+
+      - name: Parse JaCoCo coverage
+        if: always()
+        id: jacoco
+        run: |
+          if [ -f target/site/jacoco/index.html ]; then
+            INSTRUCTION_COVERAGE=$(grep -oP 'Total.*?<td class="ctr2">(\d+)%' target/site/jacoco/index.html | grep -oP '\d+%' | head -1 || echo "0%")
+            BRANCH_COVERAGE=$(grep -oP 'Total.*?<td class="ctr2">(\d+)%' target/site/jacoco/index.html | grep -oP '\d+%' | tail -1 || echo "0%")
+            echo "instruction_coverage=${INSTRUCTION_COVERAGE}" >> $GITHUB_OUTPUT
+            echo "branch_coverage=${BRANCH_COVERAGE}" >> $GITHUB_OUTPUT
+            echo "Coverage: Instruction=${INSTRUCTION_COVERAGE}, Branch=${BRANCH_COVERAGE}"
+          else
+            echo "instruction_coverage=N/A" >> $GITHUB_OUTPUT
+            echo "branch_coverage=N/A" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Parse SpotBugs results
+        if: always()
+        id: spotbugs
+        run: |
+          if [ -f target/spotbugsXml.xml ]; then
+            BUG_COUNT=$(grep -c '<BugInstance' target/spotbugsXml.xml || echo "0")
+            echo "bug_count=${BUG_COUNT}" >> $GITHUB_OUTPUT
+            echo "SpotBugs found: ${BUG_COUNT} bugs"
+          else
+            echo "bug_count=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Parse PMD results
+        if: always()
+        id: pmd
+        run: |
+          if [ -f target/pmd.xml ]; then
+            VIOLATION_COUNT=$(grep -c '<violation' target/pmd.xml || echo "0")
+            echo "violation_count=${VIOLATION_COUNT}" >> $GITHUB_OUTPUT
+            echo "PMD violations: ${VIOLATION_COUNT}"
+          else
+            echo "violation_count=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Parse Checkstyle results
+        if: always()
+        id: checkstyle
+        run: |
+          if [ -f target/checkstyle-result.xml ]; then
+            ERROR_COUNT=$(grep -c 'severity="error"' target/checkstyle-result.xml || echo "0")
+            echo "error_count=${ERROR_COUNT}" >> $GITHUB_OUTPUT
+            echo "Checkstyle errors: ${ERROR_COUNT}"
+          else
+            echo "error_count=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Parse OWASP Dependency Check
+        if: always()
+        id: owasp
+        run: |
+          if [ -f target/dependency-check-report.xml ]; then
+            VULNERABILITY_COUNT=$(grep -c '<vulnerability' target/dependency-check-report.xml || echo "0")
+            HIGH_VULNS=$(grep -c 'severity="HIGH"' target/dependency-check-report.xml || echo "0")
+            CRITICAL_VULNS=$(grep -c 'severity="CRITICAL"' target/dependency-check-report.xml || echo "0")
+            echo "vulnerability_count=${VULNERABILITY_COUNT}" >> $GITHUB_OUTPUT
+            echo "high_vulnerabilities=${HIGH_VULNS}" >> $GITHUB_OUTPUT
+            echo "critical_vulnerabilities=${CRITICAL_VULNS}" >> $GITHUB_OUTPUT
+            echo "OWASP: ${VULNERABILITY_COUNT} vulnerabilities (${CRITICAL_VULNS} critical, ${HIGH_VULNS} high)"
+          else
+            echo "vulnerability_count=0" >> $GITHUB_OUTPUT
+            echo "high_vulnerabilities=0" >> $GITHUB_OUTPUT
+            echo "critical_vulnerabilities=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload quality reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-reports
+          path: |
+            target/site/jacoco/
+            target/spotbugsXml.xml
+            target/pmd.xml
+            target/checkstyle-result.xml
+            target/dependency-check-report.xml
+            maven-verify.log
+          retention-days: 30
+
+      - name: Comment on PR with quality metrics
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const instructionCov = '${{ steps.jacoco.outputs.instruction_coverage }}';
+            const branchCov = '${{ steps.jacoco.outputs.branch_coverage }}';
+            const spotbugs = '${{ steps.spotbugs.outputs.bug_count }}';
+            const pmd = '${{ steps.pmd.outputs.violation_count }}';
+            const checkstyle = '${{ steps.checkstyle.outputs.error_count }}';
+            const vulnerabilities = '${{ steps.owasp.outputs.vulnerability_count }}';
+            const criticalVulns = '${{ steps.owasp.outputs.critical_vulnerabilities }}';
+            const highVulns = '${{ steps.owasp.outputs.high_vulnerabilities }}';
+
+            const comment = `## 📊 Quality Gate Report
+
+            | Tool | Status | Metrics |
+            |------|--------|---------|
+            | 🧪 **JaCoCo** | ${instructionCov !== 'N/A' && instructionCov.replace('%','') >= 93 ? '✅' : '❌'} | Instruction: ${instructionCov}, Branch: ${branchCov} |
+            | 🐛 **SpotBugs** | ${spotbugs == 0 ? '✅' : '❌'} | ${spotbugs} bugs found |
+            | 📝 **PMD** | ${pmd == 0 ? '✅' : '❌'} | ${pmd} violations |
+            | ✓ **Checkstyle** | ${checkstyle == 0 ? '✅' : '❌'} | ${checkstyle} errors |
+            | 🔒 **OWASP** | ${criticalVulns == 0 && highVulns == 0 ? '✅' : '❌'} | ${vulnerabilities} vulnerabilities (${criticalVulns} critical, ${highVulns} high) |
+
+            ${spotbugs > 0 || pmd > 0 || checkstyle > 0 || criticalVulns > 0 ? '⚠️ **Quality gates failed!** Fix issues before merging.' : '✅ **All quality gates passed!**'}
+
+            <details>
+            <summary>📋 View detailed reports</summary>
+
+            Download the \`quality-reports\` artifact from this workflow run for detailed analysis.
+
+            - **JaCoCo**: \`target/site/jacoco/index.html\`
+            - **SpotBugs**: \`target/spotbugsXml.xml\`
+            - **PMD**: \`target/pmd.xml\`
+            - **Checkstyle**: \`target/checkstyle-result.xml\`
+            - **OWASP**: \`target/dependency-check-report.xml\`
+
+            </details>
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Create issue for coverage drop
+        if: |
+          always() &&
+          steps.jacoco.outputs.instruction_coverage != 'N/A' &&
+          steps.jacoco.outputs.instruction_coverage != '' &&
+          steps.jacoco.outputs.instruction_coverage < '93%'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const instructionCov = '${{ steps.jacoco.outputs.instruction_coverage }}';
+            const branchCov = '${{ steps.jacoco.outputs.branch_coverage }}';
+
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'quality-gate,coverage',
+              state: 'open'
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🧪 Code Coverage Below Threshold',
+                labels: ['quality-gate', 'coverage', 'automated'],
+                body: `## Coverage Drop Detected
+
+            **Current Coverage:**
+            - Instruction Coverage: ${instructionCov}
+            - Branch Coverage: ${branchCov}
+
+            **Required:**
+            - Instruction Coverage: ≥93%
+            - Branch Coverage: ≥86%
+
+            ### Action Required
+            Increase test coverage to meet FlossWare quality standards.
+
+            ### How to Fix
+            1. Run: \`mvn clean verify\`
+            2. Open: \`target/site/jacoco/index.html\`
+            3. Identify uncovered code
+            4. Add tests for uncovered lines/branches
+            5. Re-run: \`mvn clean verify\`
+
+            ### Resources
+            - [Test Coverage Guide](../build-tools/TEST-COVERAGE.md)
+            - [Coverage Recommendations](../build-tools/COVERAGE-RECOMMENDATIONS.md)
+
+            ---
+            _This issue was automatically created by the Quality Gate workflow._
+            _Triggered by commit: ${context.sha.substring(0, 7)}_
+            _Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}_
+              `
+              });
+            }
+
+      - name: Create issue for SpotBugs violations
+        if: |
+          always() &&
+          steps.spotbugs.outputs.bug_count > 0
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const bugCount = '${{ steps.spotbugs.outputs.bug_count }}';
+
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'quality-gate,spotbugs',
+              state: 'open'
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🐛 SpotBugs Violations Detected',
+                labels: ['quality-gate', 'spotbugs', 'bugs', 'automated'],
+                body: `## SpotBugs Found Issues
+
+            **Bug Count:** ${bugCount}
+
+            SpotBugs detected potential bugs in the codebase.
+
+            ### Action Required
+            Review and fix all SpotBugs violations.
+
+            ### How to Fix
+            1. Run: \`mvn spotbugs:spotbugs\`
+            2. Open: \`target/spotbugsXml.xml\` or \`target/site/spotbugs.html\`
+            3. Review each bug report
+            4. Fix the issues or add justified exclusions to \`spotbugs-exclude.xml\`
+            5. Re-run: \`mvn spotbugs:check\`
+
+            ### Resources
+            - [SpotBugs Documentation](https://spotbugs.github.io/)
+            - [Bug Patterns](https://spotbugs.readthedocs.io/en/stable/bugDescriptions.html)
+
+            ---
+            _This issue was automatically created by the Quality Gate workflow._
+            _Triggered by commit: ${context.sha.substring(0, 7)}_
+            _Download \`spotbugsXml.xml\` from workflow artifacts for details._
+              `
+              });
+            }
+
+      - name: Create issue for PMD violations
+        if: |
+          always() &&
+          steps.pmd.outputs.violation_count > 0
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const violationCount = '${{ steps.pmd.outputs.violation_count }}';
+
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'quality-gate,pmd',
+              state: 'open'
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '📝 PMD Code Quality Violations',
+                labels: ['quality-gate', 'pmd', 'code-quality', 'automated'],
+                body: `## PMD Violations Detected
+
+            **Violation Count:** ${violationCount}
+
+            PMD detected code quality issues.
+
+            ### Action Required
+            Fix PMD violations to improve code quality.
+
+            ### How to Fix
+            1. Run: \`mvn pmd:pmd\`
+            2. Open: \`target/pmd.xml\` or \`target/site/pmd.html\`
+            3. Review each violation
+            4. Refactor code to fix violations
+            5. Re-run: \`mvn pmd:check\`
+
+            ### Common Issues
+            - Unnecessary temporary variables (use method chaining)
+            - Unused variables/imports
+            - Complex methods (reduce cyclomatic complexity)
+            - Code duplication
+
+            ### Resources
+            - [PMD Rules](https://pmd.github.io/latest/pmd_rules_java.html)
+            - [Method Chaining Guide](../build-tools/METHOD-CHAINING.md)
+
+            ---
+            _This issue was automatically created by the Quality Gate workflow._
+            _Triggered by commit: ${context.sha.substring(0, 7)}_
+              `
+              });
+            }
+
+      - name: Create issue for Checkstyle errors
+        if: |
+          always() &&
+          steps.checkstyle.outputs.error_count > 0
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const errorCount = '${{ steps.checkstyle.outputs.error_count }}';
+
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'quality-gate,checkstyle',
+              state: 'open'
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '✓ Checkstyle Violations',
+                labels: ['quality-gate', 'checkstyle', 'code-style', 'automated'],
+                body: `## Checkstyle Violations Detected
+
+            **Error Count:** ${errorCount}
+
+            Checkstyle detected code style violations.
+
+            ### Action Required
+            Fix Checkstyle errors to meet FlossWare coding standards.
+
+            ### How to Fix
+            1. Run: \`mvn checkstyle:checkstyle\`
+            2. Open: \`target/checkstyle-result.xml\` or \`target/site/checkstyle.html\`
+            3. Review each violation
+            4. Fix style issues (or use auto-formatting in IDE)
+            5. Re-run: \`mvn checkstyle:check\`
+
+            ### Common Issues
+            - Wildcard imports (use explicit imports)
+            - Missing \`final\` on method parameters
+            - Incorrect indentation/spacing
+            - Missing @Override annotations
+
+            ### Quick Fix
+            Use the auto-refactor script:
+            \`\`\`bash
+            cd ../build-tools
+            ./auto-refactor.sh ../${context.repo.repo}
+            \`\`\`
+
+            ### Resources
+            - [FlossWare Checkstyle Rules](../build-tools/src/main/resources/flossware-checkstyle.xml)
+            - [Final Variables Guide](../build-tools/FINAL-VARIABLES.md)
+
+            ---
+            _This issue was automatically created by the Quality Gate workflow._
+            _Triggered by commit: ${context.sha.substring(0, 7)}_
+              `
+              });
+            }
+
+      - name: Create issue for security vulnerabilities
+        if: |
+          always() &&
+          (steps.owasp.outputs.critical_vulnerabilities > 0 ||
+           steps.owasp.outputs.high_vulnerabilities > 0)
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const totalVulns = '${{ steps.owasp.outputs.vulnerability_count }}';
+            const criticalVulns = '${{ steps.owasp.outputs.critical_vulnerabilities }}';
+            const highVulns = '${{ steps.owasp.outputs.high_vulnerabilities }}';
+
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'quality-gate,security',
+              state: 'open'
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🔒 Security Vulnerabilities Detected (OWASP)',
+                labels: ['quality-gate', 'security', 'owasp', 'automated', 'priority-high'],
+                body: `## Security Vulnerabilities Found
+
+            **Total Vulnerabilities:** ${totalVulns}
+            - 🔴 **Critical:** ${criticalVulns}
+            - 🟠 **High:** ${highVulns}
+
+            ⚠️ **URGENT:** Critical and high-severity vulnerabilities require immediate attention.
+
+            ### Action Required
+            1. Review vulnerability report
+            2. Update affected dependencies
+            3. Apply patches or workarounds
+            4. Add suppressions for false positives (with justification)
+
+            ### How to Fix
+            1. Run: \`mvn dependency-check:check\`
+            2. Open: \`target/dependency-check-report.html\`
+            3. For each vulnerability:
+               - Identify affected dependency
+               - Check for available updates: \`mvn versions:display-dependency-updates\`
+               - Update to patched version in \`pom.xml\`
+            4. If false positive, add to \`dependency-check-suppressions.xml\` with justification
+            5. Re-run: \`mvn dependency-check:check\`
+
+            ### Resources
+            - [OWASP Dependency Check](https://jeremylong.github.io/DependencyCheck/)
+            - [CVE Database](https://cve.mitre.org/)
+            - [Maven Versions Plugin](https://www.mojohaus.org/versions-maven-plugin/)
+
+            ---
+            _This issue was automatically created by the Quality Gate workflow._
+            _Triggered by commit: ${context.sha.substring(0, 7)}_
+            _Download \`dependency-check-report.html\` from workflow artifacts._
+              `
+              });
+            }
+
+      - name: Fail workflow if quality gates not met
+        if: |
+          steps.maven-verify.outputs.exit_code != 0 ||
+          steps.spotbugs.outputs.bug_count > 0 ||
+          steps.pmd.outputs.violation_count > 0 ||
+          steps.checkstyle.outputs.error_count > 0 ||
+          steps.owasp.outputs.critical_vulnerabilities > 0 ||
+          steps.owasp.outputs.high_vulnerabilities > 0
+        run: |
+          echo "❌ Quality gates failed!"
+          echo "Exit code: ${{ steps.maven-verify.outputs.exit_code }}"
+          echo "SpotBugs: ${{ steps.spotbugs.outputs.bug_count }} bugs"
+          echo "PMD: ${{ steps.pmd.outputs.violation_count }} violations"
+          echo "Checkstyle: ${{ steps.checkstyle.outputs.error_count }} errors"
+          echo "OWASP Critical: ${{ steps.owasp.outputs.critical_vulnerabilities }}"
+          echo "OWASP High: ${{ steps.owasp.outputs.high_vulnerabilities }}"
+          exit 1
