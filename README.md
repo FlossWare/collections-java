@@ -1,4 +1,4 @@
-# jcollections
+# collections-java
 
 File-backed Java Collections that persist data to disk, leveraging Java 21's SequencedCollection and SequencedMap interfaces.
 
@@ -10,7 +10,7 @@ File-backed Java Collections that persist data to disk, leveraging Java 21's Seq
 
 ## Overview
 
-jcollections provides persistent collection implementations that store their data in files on disk using Java serialization. This library includes enterprise features such as memory-mapped I/O, B-tree indexing, checksums, caching, compaction, file locking, and primitive type support.
+collections-java provides persistent collection implementations that store their data in files on disk using Java serialization. This library includes enterprise features such as memory-mapped I/O, B-tree indexing, checksums, caching, compaction, file locking, and primitive type support.
 
 **Status**: Version 1.6 - Production ready with all features implemented and comprehensive test coverage!
 
@@ -48,7 +48,7 @@ Add the FlossWare repository and dependency to your `pom.xml`:
 <dependencies>
     <dependency>
         <groupId>org.flossware</groupId>
-        <artifactId>jcollections</artifactId>
+        <artifactId>collections-java</artifactId>
         <version>1.0</version>
     </dependency>
 </dependencies>
@@ -59,7 +59,7 @@ Add the FlossWare repository and dependency to your `pom.xml`:
 ### Basic List Usage
 
 ```java
-import org.flossware.jcollections.file.*;
+import org.flossware.collections-java.file.*;
 
 // Using builder with all features enabled
 try (FileBackedList<String> list = new FileBackedList.Builder<String>(new File("data.bin"))
@@ -98,7 +98,7 @@ try (FileBackedMap<String, String> map =
 ### Primitive Collections
 
 ```java
-import org.flossware.jcollections.file.primitive.*;
+import org.flossware.collections-java.file.primitive.*;
 
 // Zero boxing overhead!
 try (IntList list = new IntList(new File("ints.bin"))) {
@@ -113,12 +113,12 @@ try (IntList list = new IntList(new File("ints.bin"))) {
 ## Build and Test
 
 ```bash
-git clone https://github.com/FlossWare/jcollections.git
-cd jcollections
+git clone https://github.com/FlossWare/collections-java.git
+cd collections-java
 mvn clean install
 
 # Run demonstration
-mvn exec:java -Dexec.mainClass="org.flossware.jcollections.Main"
+mvn exec:java -Dexec.mainClass="org.flossware.collections-java.Main"
 
 # Run tests
 mvn test
@@ -338,8 +338,8 @@ Pull requests welcome! Priority areas:
 
 ## Repository
 
-- **GitHub**: [FlossWare/jcollections](https://github.com/FlossWare/jcollections)
-- **Issues**: [Report bugs](https://github.com/FlossWare/jcollections/issues)
+- **GitHub**: [FlossWare/collections-java](https://github.com/FlossWare/collections-java)
+- **Issues**: [Report bugs](https://github.com/FlossWare/collections-java/issues)
 - **Maven Artifacts**: [packagecloud.io/flossware/java](https://packagecloud.io/flossware/java)
 
 ## Version History

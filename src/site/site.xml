@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="collections-java">
+    <bannerLeft>
+        <name>collections-java</name>
+        <href>https://github.com/FlossWare/collections-java</href>
+    </bannerLeft>
+
+    <publishDate position="right"/>
+    <version position="right"/>
+
+    <body>
+        <links>
+            <item name="GitHub" href="https://github.com/FlossWare/collections-java"/>
+            <item name="Issues" href="https://github.com/FlossWare/collections-java/issues"/>
+        </links>
+
+        <menu name="Documentation">
+            <item name="JavaDoc" href="apidocs/index.html"/>
+        </menu>
+
+        <menu name="Quality Reports">
+            <item name="Code Coverage" href="jacoco/index.html"/>
+            <item name="SpotBugs" href="spotbugs.html"/>
+            <item name="PMD" href="pmd.html"/>
+            <item name="Checkstyle" href="checkstyle.html"/>
+            <item name="OWASP" href="dependency-check-report.html"/>
+        </menu>
+
+        <menu ref="reports"/>
+    </body>
+
+    <skin>
+        <groupId>org.apache.maven.skins</groupId>
+        <artifactId>maven-fluido-skin</artifactId>
+        <version>2.0.0-M10</version>
+    </skin>
+</project>
