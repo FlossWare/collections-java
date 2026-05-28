@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.flossware</groupId>
   <artifactId>collections-java</artifactId>
-  <version>2.0</version>
+  <version>1.0</version>
   <name>FlossWare Collections</name>
   <description>Java collections library with enhanced data structures</description>
   <url>https://github.com/FlossWare/collections-java</url>
