@@ -18,4 +18,6 @@ buildNumber.properties
 
 # Demo output files
 demo_*.bin
-*.bin
+*.bin*.log
+logs/
+.claude
