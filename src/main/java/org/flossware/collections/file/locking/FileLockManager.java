@@ -42,6 +42,9 @@ public class FileLockManager implements AutoCloseable {
         }
     }
 
+    // NOTE: Java NIO does not support atomic shared-to-exclusive lock promotion.
+    // There is a brief window between releasing the shared lock and acquiring the
+    // exclusive lock where another process could acquire the lock.
     public void upgradeToExclusive() throws IOException {
         if (!shared) {
             return;
@@ -52,7 +55,7 @@ public class FileLockManager implements AutoCloseable {
         try {
             this.lock = channel.tryLock(0, Long.MAX_VALUE, false);
             if (lock == null) {
-                throw new IOException("Could not upgrade to exclusive lock");
+                throw new IOException("Could not upgrade to exclusive lock — another process may hold it");
             }
         } catch (OverlappingFileLockException e) {
             throw new IOException("Cannot upgrade - file is already locked", e);

@@ -63,10 +63,11 @@ public class FileRepairer {
                     int length = source.readInt();
 
                     // Validate length
-                    if (length < 0) {
-                        result.addMessage("Skipping entry at position " + position + ": invalid negative length");
+                    if (length < 0 || length > 100 * 1024 * 1024) {
+                        result.addMessage("Corrupt entry at position " + position + ": invalid length " + length + ", scanning ahead");
                         entriesLost++;
-                        break;  // Cannot continue
+                        position++;
+                        continue;
                     }
 
                     long checksumSize = hasChecksums ? 8 : 0;
@@ -74,10 +75,11 @@ public class FileRepairer {
 
                     // Check bounds
                     if (position + entrySize > originalSize) {
-                        result.addMessage("Skipping entry at position " + position + ": truncated (needed " +
-                            entrySize + " bytes, only " + (originalSize - position) + " available)");
+                        result.addMessage("Truncated entry at position " + position + ": needed " +
+                            entrySize + " bytes, only " + (originalSize - position) + " available");
                         entriesLost++;
-                        break;
+                        position++;
+                        continue;
                     }
 
                     boolean entryValid = true;
@@ -93,9 +95,10 @@ public class FileRepairer {
 
                     // Verify checksum if enabled
                     if (hasChecksums && !EntryChecksum.verifyChecksum(data, storedChecksum)) {
-                        result.addMessage("Skipping entry at position " + position + ": checksum mismatch");
+                        result.addMessage("Corrupt entry at position " + position + ": checksum mismatch, scanning ahead");
                         entriesLost++;
-                        entryValid = false;
+                        position++;
+                        continue;
                     }
 
                     // Copy valid entry to output
@@ -111,9 +114,10 @@ public class FileRepairer {
                     position += entrySize;
 
                 } catch (IOException e) {
-                    result.addMessage("Skipping entry at position " + position + ": I/O error: " + e.getMessage());
+                    result.addMessage("I/O error at position " + position + ": " + e.getMessage() + ", scanning ahead");
                     entriesLost++;
-                    break;
+                    position++;
+                    continue;
                 }
             }
 

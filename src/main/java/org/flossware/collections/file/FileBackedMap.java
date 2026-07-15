@@ -14,6 +14,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.AbstractMap;
 import java.util.AbstractSet;
 import java.util.Iterator;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -122,44 +123,20 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
 
         logger.debug("Rebuilding BTree index from {} entries", entryList.size());
         index.clear();
-        int indexed = 0;
         for (int i = 0; i < entryList.size(); i++) {
             AbstractMap.SimpleEntry<K, V> entry = entryList.get(i);
-            // Only add if key not already in index (first occurrence wins)
-            // This matches linear search behavior which returns first match
-            if (index.get(entry.getKey()) == null) {
-                index.put(entry.getKey(), i);
-                indexed++;
-            }
+            index.put(entry.getKey(), i);
         }
-        logger.debug("BTree index rebuilt: {} unique keys indexed", indexed);
+        logger.debug("BTree index rebuilt: {} unique keys indexed", index.getAll().size());
     }
 
     @Override
     public Set<Map.Entry<K, V>> entrySet() {
-        return new AbstractSet<>() {
-            @Override
-            public Iterator<Map.Entry<K, V>> iterator() {
-                Iterator<AbstractMap.SimpleEntry<K, V>> it = entryList.iterator();
-                return new Iterator<>() {
-                    @Override
-                    public boolean hasNext() {
-                        return it.hasNext();
-                    }
-
-                    @Override
-                    @SuppressWarnings("unchecked")
-                    public Map.Entry<K, V> next() {
-                        return (Map.Entry<K, V>) it.next();
-                    }
-                };
-            }
-
-            @Override
-            public int size() {
-                return entryList.size();
-            }
-        };
+        Map<K, V> uniqueEntries = new LinkedHashMap<>();
+        for (AbstractMap.SimpleEntry<K, V> entry : entryList) {
+            uniqueEntries.put(entry.getKey(), entry.getValue());
+        }
+        return Collections.unmodifiableSet(uniqueEntries.entrySet());
     }
 
     @Override
@@ -176,12 +153,13 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
             }
         }
 
+        V lastMatch = null;
         for (Map.Entry<K, V> entry : entryList) {
             if (Objects.equals(entry.getKey(), key)) {
-                return entry.getValue();
+                lastMatch = entry.getValue();
             }
         }
-        return null;
+        return lastMatch;
     }
 
     @Override
@@ -251,9 +229,9 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
 
         // Save settings before closing to avoid accessing closed object
         boolean hasChecksums = entryList.getHeader().hasFlag(
-            org.flossware.jcollections.file.format.FileHeader.FLAG_CHECKSUMS_ENABLED);
+            org.flossware.collections.file.format.FileHeader.FLAG_CHECKSUMS_ENABLED);
         boolean hasMmap = entryList.getHeader().hasFlag(
-            org.flossware.jcollections.file.format.FileHeader.FLAG_MMAP_ENABLED);
+            org.flossware.collections.file.format.FileHeader.FLAG_MMAP_ENABLED);
 
         try (FileBackedMap<K, V> tempMap = new Builder<K, V>(tempFile)
                 .enableChecksums(hasChecksums)

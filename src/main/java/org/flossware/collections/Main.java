@@ -45,9 +45,9 @@ public class Main {
 
             System.out.println("\nFile format version: " + list.getHeader().getVersion());
             System.out.println("Checksums enabled: " + list.getHeader().hasFlag(
-                org.flossware.jcollections.file.format.FileHeader.FLAG_CHECKSUMS_ENABLED));
+                org.flossware.collections.file.format.FileHeader.FLAG_CHECKSUMS_ENABLED));
             System.out.println("Memory-mapped I/O: " + list.getHeader().hasFlag(
-                org.flossware.jcollections.file.format.FileHeader.FLAG_MMAP_ENABLED));
+                org.flossware.collections.file.format.FileHeader.FLAG_MMAP_ENABLED));
 
             list.flush();
         }

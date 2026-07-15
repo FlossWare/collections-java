@@ -124,7 +124,7 @@ public class IntList implements AutoCloseable {
             if (mappedBuffer != null) {
                 mappedBuffer.force();
             }
-            long actualSize = FileHeader.getHeaderSize() + size.get() * INT_SIZE;
+            long actualSize = FileHeader.getHeaderSize() + (long) size.get() * INT_SIZE;
             try {
                 if (channel.isOpen()) {
                     file.setLength(actualSize);
@@ -182,7 +182,7 @@ public class IntList implements AutoCloseable {
                 mappedBuffer.force();
                 unmapBuffer();
             }
-            long actualSize = FileHeader.getHeaderSize() + size.get() * INT_SIZE;
+            long actualSize = FileHeader.getHeaderSize() + (long) size.get() * INT_SIZE;
             if (file != null && channel.isOpen()) {
                 file.setLength(actualSize);
                 channel.force(true);

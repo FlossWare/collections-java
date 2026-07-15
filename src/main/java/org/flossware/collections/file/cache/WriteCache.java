@@ -36,7 +36,12 @@ public class WriteCache<T extends Serializable> implements AutoCloseable {
         this.maxCacheTimeMs = maxCacheTimeMs;
         // Limit pending writes to 10x cache size to prevent unbounded memory growth
         this.maxPendingWrites = maxCacheSize * 10;
-        this.cache = new LinkedHashMap<>(maxCacheSize, 0.75f, true);
+        this.cache = new LinkedHashMap<>(maxCacheSize, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<Long, CachedEntry<T>> eldest) {
+                return size() > maxCacheSize;
+            }
+        };
         this.pendingWrites = new ArrayList<>();
         this.lock = new ReentrantReadWriteLock();
         this.lastFlushTime = System.currentTimeMillis();
