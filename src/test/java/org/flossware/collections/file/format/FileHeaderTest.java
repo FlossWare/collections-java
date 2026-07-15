@@ -92,13 +92,37 @@ class FileHeaderTest {
         int allFlags = FileHeader.FLAG_CHECKSUMS_ENABLED |
                        FileHeader.FLAG_MMAP_ENABLED |
                        FileHeader.FLAG_BTREE_INDEX |
-                       FileHeader.FLAG_COMPRESSED;
+                       FileHeader.FLAG_COMPRESSED |
+                       FileHeader.FLAG_FSYNC_ENABLED;
 
         FileHeader header = new FileHeader(FileHeader.VERSION_2, allFlags);
         assertTrue(header.hasFlag(FileHeader.FLAG_CHECKSUMS_ENABLED));
         assertTrue(header.hasFlag(FileHeader.FLAG_MMAP_ENABLED));
         assertTrue(header.hasFlag(FileHeader.FLAG_BTREE_INDEX));
         assertTrue(header.hasFlag(FileHeader.FLAG_COMPRESSED));
+        assertTrue(header.hasFlag(FileHeader.FLAG_FSYNC_ENABLED));
+    }
+
+    @Test
+    void testFsyncFlag() {
+        FileHeader header = new FileHeader(FileHeader.VERSION_2, FileHeader.FLAG_FSYNC_ENABLED);
+        assertTrue(header.hasFlag(FileHeader.FLAG_FSYNC_ENABLED));
+        assertFalse(header.hasFlag(FileHeader.FLAG_CHECKSUMS_ENABLED));
+    }
+
+    @Test
+    void testFsyncFlagPersistence() throws IOException {
+        int flags = FileHeader.FLAG_CHECKSUMS_ENABLED | FileHeader.FLAG_FSYNC_ENABLED;
+        FileHeader original = new FileHeader(FileHeader.VERSION_2, flags);
+        original.write(raf);
+
+        raf.seek(0);
+        FileHeader restored = FileHeader.read(raf);
+
+        assertNotNull(restored);
+        assertTrue(restored.hasFlag(FileHeader.FLAG_FSYNC_ENABLED));
+        assertTrue(restored.hasFlag(FileHeader.FLAG_CHECKSUMS_ENABLED));
+        assertFalse(restored.hasFlag(FileHeader.FLAG_MMAP_ENABLED));
     }
 
     @Test

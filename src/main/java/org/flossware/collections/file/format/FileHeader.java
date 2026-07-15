@@ -21,6 +21,7 @@ public class FileHeader {
     public static final int FLAG_MMAP_ENABLED = 0x02;
     public static final int FLAG_BTREE_INDEX = 0x04;
     public static final int FLAG_COMPRESSED = 0x08;
+    public static final int FLAG_FSYNC_ENABLED = 0x10;
 
     public FileHeader(int version, int flags) {
         this.version = version;

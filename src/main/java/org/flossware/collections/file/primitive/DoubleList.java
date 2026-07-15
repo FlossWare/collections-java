@@ -15,8 +15,8 @@ import java.nio.channels.FileChannel;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class IntList implements AutoCloseable {
-    private static final int INT_SIZE = 4;
+public class DoubleList implements AutoCloseable {
+    private static final int DOUBLE_SIZE = 8;
     // Maximum size for memory-mapped files (~2GB, safe for 32-bit and 64-bit JVMs)
     private static final long MAX_MAPPED_SIZE = Integer.MAX_VALUE;
 
@@ -27,25 +27,17 @@ public class IntList implements AutoCloseable {
     private final AtomicInteger size;
     private final FileHeader header;
     private final FileLockManager lockManager;
-    private final boolean enableFsync;
 
-    public IntList(File path) throws IOException {
-        this(path, false);
-    }
-
-    public IntList(File path, boolean enableFsync) throws IOException {
+    public DoubleList(File path) throws IOException {
         this.file = new RandomAccessFile(path, "rw");
         this.channel = file.getChannel();
         this.lock = new ReentrantReadWriteLock();
         this.size = new AtomicInteger(0);
         this.lockManager = new FileLockManager(file, false);
-        this.enableFsync = enableFsync;
 
         FileHeader existingHeader = FileHeader.read(file);
         if (existingHeader == null) {
-            int flags = FileHeader.FLAG_MMAP_ENABLED;
-            if (enableFsync) flags |= FileHeader.FLAG_FSYNC_ENABLED;
-            this.header = new FileHeader(FileHeader.VERSION_2, flags);
+            this.header = new FileHeader(FileHeader.VERSION_2, FileHeader.FLAG_MMAP_ENABLED);
             header.write(file);
             this.size.set(0);
             file.setLength(FileHeader.getHeaderSize());
@@ -53,7 +45,7 @@ public class IntList implements AutoCloseable {
             this.header = existingHeader;
             long dataSize = file.length() - FileHeader.getHeaderSize();
             if (dataSize < 0) dataSize = 0;
-            long count = dataSize / INT_SIZE;
+            long count = dataSize / DOUBLE_SIZE;
             this.size.set((int) count);
         }
 
@@ -64,8 +56,8 @@ public class IntList implements AutoCloseable {
         if (mappedBuffer != null) {
             mappedBuffer.force();
         }
-        long minSize = FileHeader.getHeaderSize() + (long) size.get() * INT_SIZE;
-        long fileSize = Math.max(file.length(), minSize + 1024 * INT_SIZE);
+        long minSize = FileHeader.getHeaderSize() + (long) size.get() * DOUBLE_SIZE;
+        long fileSize = Math.max(file.length(), minSize + 1024 * DOUBLE_SIZE);
 
         if (file.length() < minSize) {
             file.setLength(minSize);
@@ -74,52 +66,47 @@ public class IntList implements AutoCloseable {
         if (fileSize > MAX_MAPPED_SIZE) {
             throw new IOException("File too large to memory-map: " + fileSize +
                 " bytes (max: " + MAX_MAPPED_SIZE + " bytes). " +
-                "Maximum IntList size is " + (MAX_MAPPED_SIZE / INT_SIZE) + " integers.");
+                "Maximum DoubleList size is " + (MAX_MAPPED_SIZE / DOUBLE_SIZE) + " doubles.");
         }
 
         this.mappedBuffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, fileSize);
     }
 
-    public int get(int index) {
+    public double get(int index) {
         if (index < 0 || index >= size.get()) {
             throw new IndexOutOfBoundsException(index);
         }
 
         lock.readLock().lock();
         try {
-            long position = FileHeader.getHeaderSize() + (long) index * INT_SIZE;
+            long position = FileHeader.getHeaderSize() + (long) index * DOUBLE_SIZE;
             if (position > Integer.MAX_VALUE) {
                 throw new IllegalStateException("Position overflow: list too large");
             }
-            return mappedBuffer.getInt((int) position);
+            return mappedBuffer.getDouble((int) position);
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    public void add(int value) {
+    public void add(double value) {
         lock.writeLock().lock();
         try {
             int index = size.get();
-            long position = FileHeader.getHeaderSize() + (long) index * INT_SIZE;
+            long position = FileHeader.getHeaderSize() + (long) index * DOUBLE_SIZE;
             if (position > Integer.MAX_VALUE) {
                 throw new IllegalStateException("Position overflow: list too large");
             }
 
-            long requiredSize = position + INT_SIZE;
+            long requiredSize = position + DOUBLE_SIZE;
             if (requiredSize > file.length()) {
-                long newSize = Math.max(requiredSize, file.length() + 1024 * INT_SIZE);
+                long newSize = Math.max(requiredSize, file.length() + 1024 * DOUBLE_SIZE);
                 file.setLength(newSize);
                 remapBuffer();
             }
 
-            mappedBuffer.putInt((int) position, value);
+            mappedBuffer.putDouble((int) position, value);
             size.incrementAndGet();
-
-            if (enableFsync) {
-                mappedBuffer.force();
-                channel.force(true);
-            }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } finally {
@@ -137,7 +124,7 @@ public class IntList implements AutoCloseable {
             if (mappedBuffer != null) {
                 mappedBuffer.force();
             }
-            long actualSize = FileHeader.getHeaderSize() + (long) size.get() * INT_SIZE;
+            long actualSize = FileHeader.getHeaderSize() + (long) size.get() * DOUBLE_SIZE;
             try {
                 if (channel.isOpen()) {
                     file.setLength(actualSize);
@@ -195,7 +182,7 @@ public class IntList implements AutoCloseable {
                 mappedBuffer.force();
                 unmapBuffer();
             }
-            long actualSize = FileHeader.getHeaderSize() + (long) size.get() * INT_SIZE;
+            long actualSize = FileHeader.getHeaderSize() + (long) size.get() * DOUBLE_SIZE;
             if (file != null && channel.isOpen()) {
                 file.setLength(actualSize);
                 channel.force(true);

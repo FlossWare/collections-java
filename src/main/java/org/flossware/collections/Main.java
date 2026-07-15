@@ -3,7 +3,9 @@ package org.flossware.collections;
 import org.flossware.collections.file.FileBackedList;
 import org.flossware.collections.file.FileBackedMap;
 import org.flossware.collections.file.FileBackedSet;
+import org.flossware.collections.file.primitive.DoubleList;
 import org.flossware.collections.file.primitive.IntList;
+import org.flossware.collections.file.primitive.LongList;
 
 import java.io.File;
 import java.io.IOException;
@@ -15,11 +17,15 @@ public class Main {
         File mapFile = new File("demo_map.bin");
         File setFile = new File("demo_set.bin");
         File intListFile = new File("demo_intlist.bin");
+        File longListFile = new File("demo_longlist.bin");
+        File doubleListFile = new File("demo_doublelist.bin");
 
         Files.deleteIfExists(listFile.toPath());
         Files.deleteIfExists(mapFile.toPath());
         Files.deleteIfExists(setFile.toPath());
         Files.deleteIfExists(intListFile.toPath());
+        Files.deleteIfExists(longListFile.toPath());
+        Files.deleteIfExists(doubleListFile.toPath());
 
         System.out.println("=== FileBackedList Demonstration (Enhanced) ===");
         try (FileBackedList<String> list = new FileBackedList.Builder<String>(listFile)
@@ -111,6 +117,34 @@ public class Main {
             System.out.println("Element at index 999: " + intList.get(999));
 
             intList.flush();
+        }
+
+        System.out.println("\n=== LongList Demonstration (Primitive, No Boxing) ===");
+        try (LongList longList = new LongList(longListFile)) {
+            System.out.println("Adding 1000 long values...");
+            for (int i = 0; i < 1000; i++) {
+                longList.add((long) i * 1_000_000_000L);
+            }
+
+            System.out.println("Size: " + longList.size());
+            System.out.println("Element at index 500: " + longList.get(500));
+            System.out.println("Element at index 999: " + longList.get(999));
+
+            longList.flush();
+        }
+
+        System.out.println("\n=== DoubleList Demonstration (Primitive, No Boxing) ===");
+        try (DoubleList doubleList = new DoubleList(doubleListFile)) {
+            System.out.println("Adding 1000 double values...");
+            for (int i = 0; i < 1000; i++) {
+                doubleList.add(i * 3.14159);
+            }
+
+            System.out.println("Size: " + doubleList.size());
+            System.out.println("Element at index 500: " + doubleList.get(500));
+            System.out.println("Element at index 999: " + doubleList.get(999));
+
+            doubleList.flush();
         }
 
         System.out.println("\n=== Demonstrating Compaction ===");

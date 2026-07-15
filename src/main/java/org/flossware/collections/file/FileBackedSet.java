@@ -18,6 +18,7 @@ public class FileBackedSet<E extends Serializable & Comparable<E>> extends Abstr
         private boolean enableChecksums = true;
         private boolean enableMmap = true;
         private boolean enableCache = true;
+        private boolean enableFsync = false;
         private boolean enableBTreeIndex = true;
         private int cacheSize = 1000;
         private long cacheFlushMs = 5000;
@@ -44,6 +45,11 @@ public class FileBackedSet<E extends Serializable & Comparable<E>> extends Abstr
 
         public Builder<E> enableCache(boolean enable) {
             this.enableCache = enable;
+            return this;
+        }
+
+        public Builder<E> enableFsync(boolean enable) {
+            this.enableFsync = enable;
             return this;
         }
 
@@ -79,6 +85,7 @@ public class FileBackedSet<E extends Serializable & Comparable<E>> extends Abstr
                 .enableChecksums(builder.enableChecksums)
                 .enableMmap(builder.enableMmap)
                 .enableCache(builder.enableCache)
+                .enableFsync(builder.enableFsync)
                 .enableBTreeIndex(builder.enableBTreeIndex)
                 .cacheSize(builder.cacheSize)
                 .cacheFlushMs(builder.cacheFlushMs);

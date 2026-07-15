@@ -342,4 +342,60 @@ class FileBackedMapTest {
             new FileBackedMap.Builder<String, String>(validFile).cacheFlushMs(-100).build());
     }
 
+    @Test
+    void testFsyncEnabledMap() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-map.bin").toFile();
+        try (FileBackedMap<String, String> fsyncMap = new FileBackedMap.Builder<String, String>(fsyncFile)
+                .enableFsync(true)
+                .enableBTreeIndex(true)
+                .build()) {
+            fsyncMap.put("key1", "value1");
+            fsyncMap.put("key2", "value2");
+
+            assertEquals("value1", fsyncMap.get("key1"));
+            assertEquals("value2", fsyncMap.get("key2"));
+            assertEquals(2, fsyncMap.size());
+        }
+    }
+
+    @Test
+    void testFsyncDefaultDisabledMap() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-default-map.bin").toFile();
+        try (FileBackedMap<String, String> defaultMap = new FileBackedMap.Builder<String, String>(fsyncFile)
+                .build()) {
+            defaultMap.put("test", "val");
+            // Default should not have fsync flag
+            assertDoesNotThrow(() -> defaultMap.flush());
+        }
+    }
+
+    @Test
+    void testBuilderAcceptsFsyncOption() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-builder-map.bin").toFile();
+        FileBackedMap.Builder<String, String> builder = new FileBackedMap.Builder<String, String>(fsyncFile)
+            .enableFsync(true)
+            .enableChecksums(true)
+            .enableMmap(true);
+        try (FileBackedMap<String, String> fsyncMap = builder.build()) {
+            assertNotNull(fsyncMap);
+            fsyncMap.put("key", "value");
+            assertEquals("value", fsyncMap.get("key"));
+        }
+    }
+
+    @Test
+    void testFsyncEnabledPersistence() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-persist-map.bin").toFile();
+        try (FileBackedMap<String, String> fsyncMap = new FileBackedMap.Builder<String, String>(fsyncFile)
+                .enableFsync(true)
+                .build()) {
+            fsyncMap.put("durable", "data");
+            fsyncMap.flush();
+        }
+
+        try (FileBackedMap<String, String> reopened = new FileBackedMap.Builder<String, String>(fsyncFile)
+                .build()) {
+            assertEquals("data", reopened.get("durable"));
+        }
+    }
 }

@@ -7,11 +7,18 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
 import java.nio.file.Path;
+
+import org.flossware.collections.file.format.FileHeader;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IntListTest {
     @TempDir
@@ -152,5 +159,104 @@ class IntListTest {
         list.add(Integer.MIN_VALUE);
         assertEquals(Integer.MAX_VALUE, list.get(0));
         assertEquals(Integer.MIN_VALUE, list.get(1));
+    }
+
+    @Test
+    void testFsyncEnabledAddAndGet() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-intlist.bin").toFile();
+        try (IntList fsyncList = new IntList(fsyncFile, true)) {
+            fsyncList.add(10);
+            fsyncList.add(20);
+            fsyncList.add(30);
+
+            assertEquals(3, fsyncList.size());
+            assertEquals(10, fsyncList.get(0));
+            assertEquals(20, fsyncList.get(1));
+            assertEquals(30, fsyncList.get(2));
+        }
+    }
+
+    @Test
+    void testFsyncDefaultConstructor() throws IOException {
+        // Default constructor should have fsync disabled (no FLAG_FSYNC_ENABLED)
+        File defaultFile = tempDir.resolve("fsync-default.bin").toFile();
+        try (IntList defaultList = new IntList(defaultFile)) {
+            defaultList.add(42);
+            assertEquals(1, defaultList.size());
+        }
+    }
+
+    @Test
+    void testFsyncEnabledPersistence() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-persist.bin").toFile();
+        try (IntList fsyncList = new IntList(fsyncFile, true)) {
+            fsyncList.add(100);
+            fsyncList.add(200);
+            fsyncList.flush();
+        }
+
+        try (IntList reopened = new IntList(fsyncFile)) {
+            assertEquals(2, reopened.size());
+            assertEquals(100, reopened.get(0));
+            assertEquals(200, reopened.get(1));
+        }
+    }
+
+    @Test
+    void testFsyncEnabledFlush() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-flush.bin").toFile();
+        try (IntList fsyncList = new IntList(fsyncFile, true)) {
+            fsyncList.add(42);
+            assertDoesNotThrow(() -> fsyncList.flush());
+        }
+    }
+
+    @Test
+    void testFsyncEnabledHeaderFlag() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-flag.bin").toFile();
+        try (IntList fsyncList = new IntList(fsyncFile, true)) {
+            fsyncList.add(1);
+            fsyncList.flush();
+        }
+
+        // Reopen and verify the flag is in the header
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(fsyncFile, "r");
+        FileHeader header = FileHeader.read(raf);
+        raf.close();
+        assertTrue(header.hasFlag(FileHeader.FLAG_FSYNC_ENABLED));
+        assertTrue(header.hasFlag(FileHeader.FLAG_MMAP_ENABLED));
+    }
+
+    @Test
+    void testFsyncDisabledHeaderFlag() throws IOException {
+        File noFsyncFile = tempDir.resolve("no-fsync-flag.bin").toFile();
+        try (IntList noFsyncList = new IntList(noFsyncFile, false)) {
+            noFsyncList.add(1);
+            noFsyncList.flush();
+        }
+
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(noFsyncFile, "r");
+        FileHeader header = FileHeader.read(raf);
+        raf.close();
+        assertFalse(header.hasFlag(FileHeader.FLAG_FSYNC_ENABLED));
+        assertTrue(header.hasFlag(FileHeader.FLAG_MMAP_ENABLED));
+    }
+
+    @Test
+    void testFlushAfterClose() throws IOException {
+        list.add(42);
+        list.close();
+        assertDoesNotThrow(() -> list.flush());
+    }
+
+    @Test
+    void testAddAfterFileClose() throws Exception {
+        Field fileField = IntList.class.getDeclaredField("file");
+        fileField.setAccessible(true);
+        RandomAccessFile raf = (RandomAccessFile) fileField.get(list);
+        raf.close();
+
+        assertThrows(UncheckedIOException.class, () -> list.add(42));
+        list = null;
     }
 }

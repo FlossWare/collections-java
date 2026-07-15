@@ -278,4 +278,63 @@ class FileBackedSetTest {
         assertThrows(IllegalArgumentException.class, () ->
             new FileBackedSet.Builder<String>(validFile).cacheFlushMs(-100).build());
     }
+
+    @Test
+    void testFsyncEnabledSet() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-set.bin").toFile();
+        try (FileBackedSet<String> fsyncSet = new FileBackedSet.Builder<String>(fsyncFile)
+                .enableFsync(true)
+                .build()) {
+            assertTrue(fsyncSet.add("a"));
+            assertTrue(fsyncSet.add("b"));
+            assertFalse(fsyncSet.add("a")); // duplicate
+
+            assertEquals(2, fsyncSet.size());
+            assertTrue(fsyncSet.contains("a"));
+            assertTrue(fsyncSet.contains("b"));
+        }
+    }
+
+    @Test
+    void testFsyncDefaultDisabledSet() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-default-set.bin").toFile();
+        try (FileBackedSet<String> defaultSet = new FileBackedSet.Builder<String>(fsyncFile)
+                .build()) {
+            defaultSet.add("test");
+            assertDoesNotThrow(() -> defaultSet.flush());
+        }
+    }
+
+    @Test
+    void testBuilderAcceptsFsyncOption() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-builder-set.bin").toFile();
+        FileBackedSet.Builder<String> builder = new FileBackedSet.Builder<String>(fsyncFile)
+            .enableFsync(true)
+            .enableChecksums(true)
+            .enableMmap(true);
+        try (FileBackedSet<String> fsyncSet = builder.build()) {
+            assertNotNull(fsyncSet);
+            fsyncSet.add("element");
+            assertTrue(fsyncSet.contains("element"));
+        }
+    }
+
+    @Test
+    void testFsyncEnabledPersistence() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-persist-set.bin").toFile();
+        try (FileBackedSet<String> fsyncSet = new FileBackedSet.Builder<String>(fsyncFile)
+                .enableFsync(true)
+                .build()) {
+            fsyncSet.add("durable1");
+            fsyncSet.add("durable2");
+            fsyncSet.flush();
+        }
+
+        try (FileBackedSet<String> reopened = new FileBackedSet.Builder<String>(fsyncFile)
+                .build()) {
+            assertEquals(2, reopened.size());
+            assertTrue(reopened.contains("durable1"));
+            assertTrue(reopened.contains("durable2"));
+        }
+    }
 }

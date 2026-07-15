@@ -336,4 +336,108 @@ class FileBackedListTest {
         assertThrows(IllegalArgumentException.class, () ->
             new FileBackedList.Builder<String>(validFile).cacheFlushMs(0).build());
     }
+
+    @Test
+    void testFsyncDefaultDisabled() {
+        assertFalse(list.getHeader().hasFlag(FileHeader.FLAG_FSYNC_ENABLED));
+    }
+
+    @Test
+    void testFsyncEnabledInHeader() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-enabled.bin").toFile();
+        try (FileBackedList<String> fsyncList = new FileBackedList.Builder<String>(fsyncFile)
+                .enableFsync(true)
+                .build()) {
+            assertTrue(fsyncList.getHeader().hasFlag(FileHeader.FLAG_FSYNC_ENABLED));
+        }
+    }
+
+    @Test
+    void testFsyncDisabledInHeader() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-disabled.bin").toFile();
+        try (FileBackedList<String> fsyncList = new FileBackedList.Builder<String>(fsyncFile)
+                .enableFsync(false)
+                .build()) {
+            assertFalse(fsyncList.getHeader().hasFlag(FileHeader.FLAG_FSYNC_ENABLED));
+        }
+    }
+
+    @Test
+    void testFsyncEnabledAddAndGet() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-add-get.bin").toFile();
+        try (FileBackedList<String> fsyncList = new FileBackedList.Builder<String>(fsyncFile)
+                .enableFsync(true)
+                .enableChecksums(true)
+                .enableMmap(true)
+                .build()) {
+            fsyncList.add("Alpha");
+            fsyncList.add("Beta");
+            fsyncList.add("Gamma");
+
+            assertEquals(3, fsyncList.size());
+            assertEquals("Alpha", fsyncList.get(0));
+            assertEquals("Beta", fsyncList.get(1));
+            assertEquals("Gamma", fsyncList.get(2));
+        }
+    }
+
+    @Test
+    void testFsyncEnabledPersistence() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-persist.bin").toFile();
+        try (FileBackedList<String> fsyncList = new FileBackedList.Builder<String>(fsyncFile)
+                .enableFsync(true)
+                .build()) {
+            fsyncList.add("Durable1");
+            fsyncList.add("Durable2");
+            fsyncList.flush();
+        }
+
+        try (FileBackedList<String> reopened = new FileBackedList.Builder<String>(fsyncFile).build()) {
+            assertEquals(2, reopened.size());
+            assertEquals("Durable1", reopened.get(0));
+            assertEquals("Durable2", reopened.get(1));
+        }
+    }
+
+    @Test
+    void testFsyncEnabledFlush() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-flush.bin").toFile();
+        try (FileBackedList<String> fsyncList = new FileBackedList.Builder<String>(fsyncFile)
+                .enableFsync(true)
+                .build()) {
+            fsyncList.add("Test");
+            assertDoesNotThrow(() -> fsyncList.flush());
+        }
+    }
+
+    @Test
+    void testFsyncEnabledWithoutMmapOrCache() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-plain.bin").toFile();
+        try (FileBackedList<String> fsyncList = new FileBackedList.Builder<String>(fsyncFile)
+                .enableFsync(true)
+                .enableMmap(false)
+                .enableCache(false)
+                .enableChecksums(false)
+                .build()) {
+            fsyncList.add("item1");
+            fsyncList.add("item2");
+            assertEquals(2, fsyncList.size());
+            assertEquals("item1", fsyncList.get(0));
+            assertEquals("item2", fsyncList.get(1));
+        }
+    }
+
+    @Test
+    void testBuilderAcceptsFsyncOption() throws IOException {
+        File fsyncFile = tempDir.resolve("fsync-builder.bin").toFile();
+        FileBackedList.Builder<String> builder = new FileBackedList.Builder<String>(fsyncFile)
+            .enableFsync(true)
+            .enableChecksums(true)
+            .enableMmap(true)
+            .enableCache(true);
+        try (FileBackedList<String> fsyncList = builder.build()) {
+            assertNotNull(fsyncList);
+            assertTrue(fsyncList.getHeader().hasFlag(FileHeader.FLAG_FSYNC_ENABLED));
+        }
+    }
 }

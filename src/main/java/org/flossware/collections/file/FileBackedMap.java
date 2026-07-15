@@ -35,6 +35,7 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
         private boolean enableChecksums = true;
         private boolean enableMmap = true;
         private boolean enableCache = true;
+        private boolean enableFsync = false;
         private boolean enableBTreeIndex = true;
         private int cacheSize = 1000;
         private long cacheFlushMs = 5000;
@@ -61,6 +62,11 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
 
         public Builder<K, V> enableCache(boolean enable) {
             this.enableCache = enable;
+            return this;
+        }
+
+        public Builder<K, V> enableFsync(boolean enable) {
+            this.enableFsync = enable;
             return this;
         }
 
@@ -96,6 +102,7 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
                 .enableChecksums(builder.enableChecksums)
                 .enableMmap(builder.enableMmap)
                 .enableCache(builder.enableCache)
+                .enableFsync(builder.enableFsync)
                 .cacheSize(builder.cacheSize)
                 .cacheFlushMs(builder.cacheFlushMs);
 
@@ -232,10 +239,13 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
             org.flossware.collections.file.format.FileHeader.FLAG_CHECKSUMS_ENABLED);
         boolean hasMmap = entryList.getHeader().hasFlag(
             org.flossware.collections.file.format.FileHeader.FLAG_MMAP_ENABLED);
+        boolean hasFsync = entryList.getHeader().hasFlag(
+            org.flossware.collections.file.format.FileHeader.FLAG_FSYNC_ENABLED);
 
         try (FileBackedMap<K, V> tempMap = new Builder<K, V>(tempFile)
                 .enableChecksums(hasChecksums)
                 .enableMmap(hasMmap)
+                .enableFsync(hasFsync)
                 .enableBTreeIndex(useBTreeIndex)
                 .build()) {
 
@@ -269,6 +279,7 @@ public class FileBackedMap<K extends Serializable & Comparable<K>, V extends Ser
             new FileBackedList.Builder<AbstractMap.SimpleEntry<K, V>>(originalFile)
                 .enableChecksums(hasChecksums)
                 .enableMmap(hasMmap)
+                .enableFsync(hasFsync)
                 .enableCache(true);
 
         this.entryList = listBuilder.build();

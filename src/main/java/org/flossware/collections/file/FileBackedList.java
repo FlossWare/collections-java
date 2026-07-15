@@ -7,12 +7,8 @@ import org.flossware.collections.file.locking.FileLockManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.RandomAccessFile;
 import java.io.Serializable;
 import java.io.UncheckedIOException;
@@ -48,6 +44,8 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
     private final boolean enableChecksums;
     private final boolean enableMmap;
     private final boolean enableCache;
+    private final boolean enableFsync;
+    private final Serializer<E> serializer;
     private long actualDataSize;
 
     public static class Builder<E extends Serializable> {
@@ -57,7 +55,9 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
         private boolean enableCache = true;
         private int cacheSize = 1000;
         private long cacheFlushMs = 5000;
+        private boolean enableFsync = false;
         private boolean sharedLock = false;
+        private Serializer<E> serializer;
 
         public Builder(File path) {
             if (path == null) {
@@ -100,6 +100,19 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
             return this;
         }
 
+        public Builder<E> enableFsync(boolean enable) {
+            this.enableFsync = enable;
+            return this;
+        }
+
+        public Builder<E> serializer(Serializer<E> serializer) {
+            if (serializer == null) {
+                throw new IllegalArgumentException("Serializer cannot be null");
+            }
+            this.serializer = serializer;
+            return this;
+        }
+
         public Builder<E> sharedLock(boolean shared) {
             this.sharedLock = shared;
             return this;
@@ -120,6 +133,8 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
         this.enableChecksums = builder.enableChecksums;
         this.enableMmap = builder.enableMmap;
         this.enableCache = builder.enableCache;
+        this.enableFsync = builder.enableFsync;
+        this.serializer = builder.serializer != null ? builder.serializer : new JavaSerializer<>();
 
         this.lockManager = new FileLockManager(file, builder.sharedLock);
 
@@ -131,11 +146,12 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
             int flags = 0;
             if (enableChecksums) flags |= FileHeader.FLAG_CHECKSUMS_ENABLED;
             if (enableMmap) flags |= FileHeader.FLAG_MMAP_ENABLED;
+            if (enableFsync) flags |= FileHeader.FLAG_FSYNC_ENABLED;
 
             this.header = new FileHeader(FileHeader.VERSION_2, flags);
             header.write(file);
-            logger.info("Created new file-backed list: path={}, checksums={}, mmap={}, cache={}",
-                builder.path, enableChecksums, enableMmap, enableCache);
+            logger.info("Created new file-backed list: path={}, checksums={}, mmap={}, cache={}, fsync={}",
+                builder.path, enableChecksums, enableMmap, enableCache, enableFsync);
         } else {
             this.header = existingHeader;
             logger.info("Opened existing file-backed list: path={}, version={}, size={}",
@@ -274,8 +290,8 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
 
                 return deserialize(buffer);
             }
-        } catch (IOException | ClassNotFoundException e) {
-            throw new UncheckedIOException(new IOException(e));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         } finally {
             lock.readLock().unlock();
         }
@@ -308,6 +324,10 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
             size.incrementAndGet();
 
             actualDataSize = file.getFilePointer();
+
+            if (enableFsync) {
+                channel.force(true);
+            }
 
             if (enableCache && cache != null) {
                 cache.put(offset, e, data);
@@ -342,6 +362,10 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
             }
 
             file.write(entry.serialized);
+        }
+
+        if (enableFsync && !pendingWrites.isEmpty()) {
+            channel.force(true);
         }
     }
 
@@ -499,19 +523,12 @@ public class FileBackedList<E extends Serializable> extends AbstractList<E> impl
         }
     }
 
-    private byte[] serialize(E obj) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
-            oos.writeObject(obj);
-        }
-        return baos.toByteArray();
+    private byte[] serialize(E obj) {
+        return serializer.serialize(obj);
     }
 
-    @SuppressWarnings("unchecked")
-    private E deserialize(byte[] data) throws IOException, ClassNotFoundException {
-        try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(data))) {
-            return (E) ois.readObject();
-        }
+    private E deserialize(byte[] data) {
+        return serializer.deserialize(data);
     }
 
     public FileHeader getHeader() {
