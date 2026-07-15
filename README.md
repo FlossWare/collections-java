@@ -1,41 +1,17 @@
 # collections-java
 
-File-backed Java Collections that persist data to disk, leveraging Java 21's SequencedCollection and SequencedMap interfaces.
+File-backed Java collections that persist data to disk, implementing Java 21's `SequencedCollection`, `SequencedMap`, and `SequencedSet` interfaces.
 
 [![Java](https://img.shields.io/badge/Java-21-blue.svg)](https://openjdk.java.net/projects/jdk/21/)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.6-brightgreen.svg)]()
-[![Tests](https://img.shields.io/badge/tests-210%20passing-success.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-89%25%20%2F%2077%25-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-211%20passing-success.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-90%25%20instruction%20%2F%2077%25%20branch-green.svg)]()
 
 ## Overview
 
-collections-java provides persistent collection implementations that store their data in files on disk using Java serialization. This library includes enterprise features such as memory-mapped I/O, B-tree indexing, checksums, caching, compaction, file locking, and primitive type support.
-
-**Status**: Version 1.6 - Production ready with all features implemented and comprehensive test coverage!
-
-## Features
-
-- **Java 21 Compatibility**: Implements `SequencedCollection`, `SequencedMap`, and `SequencedSet`
-- **Persistent Storage**: Data survives process restarts with file-backed collections
-- **Thread-Safe**: Uses `ReentrantReadWriteLock` for concurrent access within JVM
-- **Variable-Length Serialization**: Efficiently stores objects of different sizes
-- **AutoCloseable**: Proper resource management with try-with-resources
-- **File Format Versioning**: Forward-compatible file format with version headers and magic bytes
-- **Data Integrity**: CRC32 checksums for corruption detection
-- **Memory-Mapped I/O**: Significantly faster performance using MappedByteBuffer (100-1000x speedup)
-- **Write-Behind Caching**: Configurable in-memory cache with automatic flushing
-- **B-Tree Indexing**: O(log n) key lookups instead of O(n) for maps
-- **Multi-Process File Locking**: Prevents corruption from concurrent access across processes
-- **Primitive Type Support**: IntList avoids boxing overhead for integer data
-- **Compaction**: Reclaims space from duplicate keys and deleted entries
-- **Configurable Features**: Builder pattern to enable/disable features per collection
+collections-java provides persistent collection implementations backed by files on disk. Data survives process restarts. Collections are append-only, thread-safe, and support memory-mapped I/O, B-tree indexing, CRC32 checksums, write-behind caching, and compaction.
 
 ## Installation
-
-### Maven
-
-Add the FlossWare repository and dependency to your `pom.xml`:
 
 ```xml
 <repositories>
@@ -56,325 +32,180 @@ Add the FlossWare repository and dependency to your `pom.xml`:
 
 ## Quick Start
 
-### Basic List Usage
+### FileBackedList
 
 ```java
-import org.flossware.collections-java.file.*;
-
-// Using builder with all features enabled
 try (FileBackedList<String> list = new FileBackedList.Builder<String>(new File("data.bin"))
         .enableChecksums(true)
         .enableMmap(true)
         .enableCache(true)
-        .cacheSize(1000)
-        .cacheFlushMs(5000)
         .build()) {
-    
+
     list.add("Hello");
     list.add("World");
-    list.flush(); // Explicit control over flushing
+
+    list.forEach(System.out::println);
+    list.reversed().forEach(System.out::println);
+
+    System.out.println(list.getFirst());
+    System.out.println(list.getLast());
+
+    list.flush();
 }
 ```
 
-### B-Tree Indexed Map
+### FileBackedMap
 
 ```java
-try (FileBackedMap<String, String> map = 
+try (FileBackedMap<String, String> map =
         new FileBackedMap.Builder<String, String>(new File("map.bin"))
-            .enableBTreeIndex(true)  // O(log n) lookups!
+            .enableBTreeIndex(true)
             .enableChecksums(true)
             .build()) {
-    
-    // Add 1 million entries
-    for (int i = 0; i < 1_000_000; i++) {
-        map.put("Key" + i, "Value" + i);
-    }
-    
-    // Lightning-fast lookup with B-tree
-    String value = map.get("Key500000"); // O(log n)
+
+    map.put("key1", "value1");
+    map.put("key2", "value2");
+
+    String value = map.get("key1"); // O(log n) with B-tree
+
+    map.compact(); // remove superseded duplicate entries
 }
 ```
 
-### Primitive Collections
+### FileBackedSet
 
 ```java
-import org.flossware.collections-java.file.primitive.*;
+try (FileBackedSet<String> set = new FileBackedSet.Builder<String>(new File("set.bin"))
+        .enableBTreeIndex(true)
+        .build()) {
 
-// Zero boxing overhead!
-try (IntList list = new IntList(new File("ints.bin"))) {
-    for (int i = 0; i < 1_000_000; i++) {
-        list.add(i);
-    }
-    
-    int value = list.get(500000); // Native int, no boxing
+    set.add("Apple");
+    set.add("Banana");
+    set.add("Apple"); // no-op, already present
+
+    set.forEach(System.out::println);
 }
 ```
 
-## Build and Test
+### IntList (primitive, no boxing)
 
-```bash
-git clone https://github.com/FlossWare/collections-java.git
-cd collections-java
-mvn clean install
-
-# Run demonstration
-mvn exec:java -Dexec.mainClass="org.flossware.collections-java.Main"
-
-# Run tests
-mvn test
-# ALL TESTS PASSING: 210/210 (100%)
-# Zero failures!
+```java
+try (IntList ints = new IntList(new File("ints.bin"))) {
+    for (int i = 0; i < 1_000_000; i++) {
+        ints.add(i);
+    }
+    int value = ints.get(500_000); // native int, no boxing
+}
 ```
 
 ## Configuration
 
-All collections use a builder pattern for flexible configuration:
-
-```java
-// List with all features enabled
-FileBackedList<String> list = new FileBackedList.Builder<>(file)
-    .enableChecksums(true)
-    .enableMmap(true)
-    .enableCache(true)
-    .build();
-
-// Map with B-tree indexing
-FileBackedMap<K,V> map = new FileBackedMap.Builder<>(file)
-    .enableBTreeIndex(true)
-    .enableChecksums(true)
-    .build();
-```
-
-### Configuration Options
+All generic collections use a Builder pattern:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `enableChecksums` | true | CRC32 checksums for data integrity |
-| `enableMmap` | true | Memory-mapped I/O for performance |
-| `enableCache` | true | Write-behind caching |
-| `enableBTreeIndex` | true | B-tree indexing (maps only) |
-| `cacheSize` | 1000 | Max cached entries |
-| `cacheFlushMs` | 5000 | Auto-flush interval |
-| `sharedLock` | false | Allow shared read locks |
-
-## Performance Benchmarks
-
-Memory-mapped I/O and B-tree indexing provide significant performance improvements:
-
-| Operation | Performance | Notes |
-|-----------|-------------|-------|
-| Sequential write (10K) | 5ms | With mmap + cache |
-| Random read (10K) | 2ms | With mmap + cache |
-| Map lookup | O(log n) | B-tree indexing |
-| Primitive int operations | ~1ms/1K | Zero boxing overhead |
+| `enableChecksums` | `true` | CRC32 checksums per entry for corruption detection |
+| `enableMmap` | `true` | Memory-mapped I/O via `MappedByteBuffer` |
+| `enableCache` | `true` | Write-behind cache to batch disk writes |
+| `enableBTreeIndex` | `true` | In-memory B-tree index for O(log n) key lookups (maps only) |
+| `cacheSize` | `1000` | Max cached entries before auto-flush |
+| `cacheFlushMs` | `5000` | Time-based auto-flush interval (ms) |
+| `sharedLock` | `false` | Use shared (read) file locks instead of exclusive |
 
 ## Architecture
+
+### Collections
+
+| Class | Implements | Description |
+|-------|-----------|-------------|
+| `FileBackedList<E>` | `List<E>`, `SequencedCollection<E>` | Append-only file-backed list |
+| `FileBackedMap<K,V>` | `Map<K,V>`, `SequencedMap<K,V>` | File-backed map with B-tree index |
+| `FileBackedSet<E>` | `Set<E>`, `SequencedSet<E>` | File-backed set (delegates to map) |
+| `IntList` | `AutoCloseable` | Primitive `int` list, always memory-mapped |
+
+### Supporting Components
+
+| Class | Purpose |
+|-------|---------|
+| `FileHeader` | 64-byte binary header with magic bytes (`JCOL`), version, flags, CRC32 |
+| `EntryChecksum` | CRC32 checksum calculation and verification |
+| `BTreeIndex<K>` | In-memory order-128 B-tree for key lookups |
+| `WriteCache<T>` | LRU write-behind cache with time/size flush triggers |
+| `FileLockManager` | Multi-process file locking via `java.nio.channels.FileLock` |
+| `FileValidator` | Validates file integrity, reports errors and warnings |
+| `FileRepairer` | Recovers valid entries from corrupted files |
 
 ### File Format
 
 ```
 [Header - 64 bytes]
-  - Magic bytes: 0x4A434F4C ("JCOL")
-  - Version: 2
-  - Creation timestamp
-  - Flags: checksums | mmap | btree | compressed
-  - Header checksum (CRC32)
-  
-[Data Entries]
-  - Length (4 bytes)
-  - Checksum (8 bytes, if enabled)
-  - Serialized data (N bytes)
-  
-[Repeated...]
+  Magic:     0x4A434F4C ("JCOL")
+  Version:   4 bytes (currently 2)
+  Timestamp: 8 bytes (creation time)
+  Flags:     4 bytes (checksums | mmap | btree | compressed)
+  Reserved:  36 bytes
+  Checksum:  8 bytes (CRC32 of preceding 56 bytes)
+
+[Entry 1]
+  Length:    4 bytes (int)
+  Checksum:  8 bytes (CRC32, if enabled)
+  Data:     N bytes (Java-serialized object)
+
+[Entry 2...]
 ```
 
-### Component Diagram
+### Dependency Graph
 
 ```
-FileBackedList / FileBackedMap / FileBackedSet
-    |
-    +-- FileHeader (versioning, flags, checksums)
-    +-- FileLockManager (multi-process safety)
-    +-- WriteCache (configurable caching)
-    +-- BTreeIndex (O(log n) lookups for maps)
-    +-- Memory-Mapped I/O (MappedByteBuffer)
-    +-- EntryChecksum (CRC32 validation)
+FileBackedSet
+  --> FileBackedMap (delegation)
+        --> FileBackedList (stores SimpleEntry<K,V> objects)
+        --> BTreeIndex (in-memory key index)
+              --> FileHeader
+              --> EntryChecksum
+              --> WriteCache
+              --> FileLockManager
+
+IntList
+  --> FileHeader
+  --> FileLockManager
 ```
 
-## Use Cases
+## Design
 
-### Good For
-- Append-only logs
-- Configuration data  
-- Small to medium datasets (< 10M entries)
-- Multi-process applications with file locking
-- Prototyping and testing
-- **High-performance requirements** with memory-mapped I/O
-- **Large datasets** (millions of entries) with B-tree indexing
-- **Data integrity critical** applications with checksums
-- **Primitive data** (millions of ints/longs) without boxing overhead
+**Append-only**: `add()` and `put()` always append to the end of the file. Duplicate keys in maps accumulate on disk; the in-memory B-tree index tracks the latest value. Call `compact()` to rewrite the file with only unique entries.
 
-### Not Recommended For
-- **Mission-critical data** (no ACID guarantees, no crash recovery)
-- **Production systems requiring durability** (partial writes can corrupt files)
-- Relational data (use a database)
-- Frequent random updates/deletes (append-optimized)
-- Network-shared filesystems (file locking may not work)
-- Real-time systems (periodic cache flushes cause latency spikes)
+**Thread safety**: All collections use `ReentrantReadWriteLock` for safe concurrent access within a single JVM. `FileLockManager` provides cross-process locking via `java.nio.channels.FileLock`.
 
-## Known Limitations
+**Serialization**: Uses Java's built-in `ObjectOutputStream`/`ObjectInputStream`. Elements must implement `Serializable`. Map keys must also implement `Comparable`.
 
-### Data Durability
-- **No transaction support**: Writes are not atomic - process crashes can leave files corrupted
-- **No write-ahead logging**: Partial writes cannot be rolled back
-- **No crash recovery**: Files corrupted by partial writes must be manually repaired
-- **No ACID guarantees**: Not suitable for mission-critical data requiring durability
+**Unsupported operations**: `addFirst()`, `removeFirst()`, and `remove()` throw `UnsupportedOperationException` because they would require rewriting the entire file.
 
-### Performance
-- Compaction requires temporary file (no in-place compaction)
-- Memory-mapped files limited by address space (32-bit JVMs)
-- Cache flushes can cause latency spikes  
-- B-tree index rebuilt on load (slow startup for huge maps)
-- File locking may not work on network filesystems
-- Reversed maps use linear search (BTreeIndex not shared for correctness)
+## Good For
 
-## Thread Safety
+- Append-only logs and event stores
+- Persistent caches and configuration data
+- Small to medium datasets
+- Multi-process applications needing shared file access
+- Prototyping persistent data structures
 
-- Thread-safe within single JVM using ReentrantReadWriteLock
-- Safe across processes using FileChannel locking
-- Read operations can occur concurrently
-- Write operations are serialized
+## Not Recommended For
+
+- Mission-critical data requiring ACID guarantees
+- Frequent random updates or deletes
+- Network-shared filesystems (file locking unreliable)
+- Datasets approaching 2GB (memory-mapped file limit)
+
+## Building
+
+```bash
+git clone https://github.com/FlossWare/collections-java.git
+cd collections-java
+mvn clean verify
+```
+
+Requires Java 21+.
 
 ## License
 
-GNU General Public License v3.0
-
-## CI/CD and Versioning
-
-This project uses GitHub Actions for automated CI/CD with semantic versioning in `X.Y` format (major.minor) enforced by Maven plugins.
-
-### Automated CI/CD Pipeline
-
-Every push to the `main` branch automatically triggers:
-
-1. **Version Increment**: Minor version auto-incremented (e.g., 1.0 → 1.1)
-2. **Dependency Updates**: JUnit and other dependencies updated to latest versions
-3. **Build and Test**: Full Maven build with comprehensive test suite (210 tests, 89% coverage)
-4. **Deploy**: Artifact published to [packagecloud.io/flossware/java](https://packagecloud.io/flossware/java)
-5. **Git Tag**: Automatic commit and tag creation (e.g., `v1.1`)
-
-The workflow is defined in `.github/workflows/main.yml` and prevents infinite loops by skipping commits from `version-bump@flossware.org`.
-
-### Version Management Tooling
-
-- **versions-maven-plugin**: Programmatic version updates via `build-helper:parse-version`
-- **maven-enforcer-plugin**: Enforces version format rules
-  - Requires release dependencies (no snapshots)
-  - Requires release version (no -SNAPSHOT suffix)
-  - Enforces X.Y version format (e.g., 1.0, 1.1, 2.0)
-- **maven-scm-plugin**: Automated git commits and tagging
-
-### Repository Secrets
-
-The CI/CD pipeline requires the following organization-level GitHub secret:
-- `PACKAGECLOUD_TOKEN`: Authentication for packagecloud.io deployment
-
-### Manual Version Updates
-
-For exceptional cases, you can manually update the version:
-
-```bash
-# Update to a specific version
-mvn versions:set -DnewVersion=2.0 -DgenerateBackupPoms=false
-
-# Verify the build with enforcer rules
-mvn clean compile
-```
-
-### Cross-Platform Version Bumping
-
-The CI/CD pipeline includes scripts for manual version bumping on multiple platforms:
-
-**Linux/macOS:**
-```bash
-./ci/rev-version.sh
-```
-
-**Windows PowerShell (recommended):**
-```powershell
-.\ci\rev-version.ps1
-```
-
-**Windows Command Prompt:**
-```cmd
-.\ci\rev-version.bat
-```
-
-All three scripts perform the same operations:
-- Configure git identity for commits
-- Extract current version from pom.xml
-- Increment minor version (X.Y → X.Y+1)
-- Update pom.xml with new version
-- Create git commit with `[ci skip]` tag
-- Create annotated git tag (e.g., `v1.5`)
-- Push changes and tags to origin
-
-The PowerShell version includes enhanced error handling and colored console output.
-
-### Version Format Rules
-
-- ✅ Valid: `1.0`, `1.1`, `2.0`, `10.5`
-- ❌ Invalid: `1.0.0` (three parts), `1.0-SNAPSHOT` (snapshot), `v1.0` (prefix)
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-Pull requests welcome! Priority areas:
-- Optimize B-tree index serialization
-- Add LongList, DoubleList primitive types
-- Implement async compaction
-- Performance optimizations
-
-## Repository
-
-- **GitHub**: [FlossWare/collections-java](https://github.com/FlossWare/collections-java)
-- **Issues**: [Report bugs](https://github.com/FlossWare/collections-java/issues)
-- **Maven Artifacts**: [packagecloud.io/flossware/java](https://packagecloud.io/flossware/java)
-
-## Version History
-
-- **1.6** (2026-05-23) - Major test coverage expansion, enhancement features, and critical bug fixes
-  - Expanded test suite from 20 to 210 tests (+950% increase!)
-  - Achieved 89% instruction / 77% branch coverage
-  - Added SLF4J logging framework for debugging and observability
-  - Added FileValidator and FileRepairer utilities for corruption detection/recovery
-  - Fixed 10 critical data integrity, performance, and correctness bugs (#23-#35)
-  - Fixed FileBackedSet.add() to properly prevent duplicates
-  - Fixed BTreeIndex to support key updates and prevent false positives
-  - Fixed thread safety race conditions in WriteCache and FileBackedList
-  - Fixed memory-mapped I/O to actually use MappedByteBuffer (100-1000x speedup)
-  - Added Builder parameter validation (null checks, positive values)
-  - Added explicit MappedByteBuffer unmapping (Windows compatibility)
-  - Enhanced FileLockManager with comprehensive exception handling
-  - Improved CI/CD pipeline with build verification step
-  - Cross-platform version bumping scripts (PowerShell, Batch)
-  - Added CODE_OF_CONDUCT.md
-
-- **1.0** (2026-05-14) - Initial release with enterprise features
-  - FileBackedList, Map, Set with Java 21 SequencedCollection support
-  - File format versioning with magic bytes and headers
-  - CRC32 checksums for data integrity  
-  - Memory-mapped file I/O for performance
-  - Write-behind caching
-  - B-tree indexing for O(log n) lookups
-  - Multi-process file locking
-  - Primitive type support (IntList)
-  - Compaction for space reclamation
-  - Variable-length serialization
-
-See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
-
-## Author
-
-**FlossWare**
+[GNU General Public License v3.0](LICENSE)
