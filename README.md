@@ -4,8 +4,8 @@ File-backed Java collections that persist data to disk, implementing Java 21's `
 
 [![Java](https://img.shields.io/badge/Java-21-blue.svg)](https://openjdk.java.net/projects/jdk/21/)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-211%20passing-success.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-90%25%20instruction%20%2F%2077%25%20branch-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-423%20passing-success.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-95%25%20instruction%20%2F%2087%25%20branch-green.svg)]()
 
 ## Overview
 
@@ -87,14 +87,43 @@ try (FileBackedSet<String> set = new FileBackedSet.Builder<String>(new File("set
 }
 ```
 
-### IntList (primitive, no boxing)
+### Primitive Lists (no boxing)
 
 ```java
+// IntList - native int storage (4 bytes per element)
 try (IntList ints = new IntList(new File("ints.bin"))) {
     for (int i = 0; i < 1_000_000; i++) {
         ints.add(i);
     }
     int value = ints.get(500_000); // native int, no boxing
+}
+
+// LongList - native long storage (8 bytes per element)
+try (LongList longs = new LongList(new File("longs.bin"))) {
+    longs.add(Long.MAX_VALUE);
+    long value = longs.get(0);
+}
+
+// DoubleList - native double storage (8 bytes per element)
+try (DoubleList doubles = new DoubleList(new File("doubles.bin"))) {
+    doubles.add(3.14159);
+    double value = doubles.get(0);
+}
+```
+
+### Custom Serializer
+
+```java
+// Use a custom serializer instead of Java's built-in ObjectOutputStream
+Serializer<String> utf8 = new Serializer<>() {
+    public byte[] serialize(String s) { return s.getBytes(StandardCharsets.UTF_8); }
+    public String deserialize(byte[] b) { return new String(b, StandardCharsets.UTF_8); }
+};
+
+try (FileBackedList<String> list = new FileBackedList.Builder<String>(new File("data.bin"))
+        .serializer(utf8)
+        .build()) {
+    list.add("Hello");
 }
 ```
 
@@ -110,6 +139,8 @@ All generic collections use a Builder pattern:
 | `enableBTreeIndex` | `true` | In-memory B-tree index for O(log n) key lookups (maps only) |
 | `cacheSize` | `1000` | Max cached entries before auto-flush |
 | `cacheFlushMs` | `5000` | Time-based auto-flush interval (ms) |
+| `enableFsync` | `false` | Force disk sync after every write for durability |
+| `serializer` | `JavaSerializer` | Custom `Serializer<T>` for element encoding |
 | `sharedLock` | `false` | Use shared (read) file locks instead of exclusive |
 
 ## Architecture
@@ -122,11 +153,15 @@ All generic collections use a Builder pattern:
 | `FileBackedMap<K,V>` | `Map<K,V>`, `SequencedMap<K,V>` | File-backed map with B-tree index |
 | `FileBackedSet<E>` | `Set<E>`, `SequencedSet<E>` | File-backed set (delegates to map) |
 | `IntList` | `AutoCloseable` | Primitive `int` list, always memory-mapped |
+| `LongList` | `AutoCloseable` | Primitive `long` list, always memory-mapped |
+| `DoubleList` | `AutoCloseable` | Primitive `double` list, always memory-mapped |
 
 ### Supporting Components
 
 | Class | Purpose |
 |-------|---------|
+| `Serializer<T>` | Pluggable serialization interface for custom encoding |
+| `JavaSerializer<T>` | Default serializer using Java's ObjectOutputStream |
 | `FileHeader` | 64-byte binary header with magic bytes (`JCOL`), version, flags, CRC32 |
 | `EntryChecksum` | CRC32 checksum calculation and verification |
 | `BTreeIndex<K>` | In-memory order-128 B-tree for key lookups |
@@ -166,7 +201,7 @@ FileBackedSet
               --> WriteCache
               --> FileLockManager
 
-IntList
+IntList / LongList / DoubleList
   --> FileHeader
   --> FileLockManager
 ```
@@ -177,7 +212,7 @@ IntList
 
 **Thread safety**: All collections use `ReentrantReadWriteLock` for safe concurrent access within a single JVM. `FileLockManager` provides cross-process locking via `java.nio.channels.FileLock`.
 
-**Serialization**: Uses Java's built-in `ObjectOutputStream`/`ObjectInputStream`. Elements must implement `Serializable`. Map keys must also implement `Comparable`.
+**Serialization**: Default uses Java's `ObjectOutputStream`/`ObjectInputStream` via `JavaSerializer`. Provide a custom `Serializer<T>` via `.serializer()` in the Builder for alternatives (JSON, Protobuf, etc). Elements must implement `Serializable` when using the default serializer. Map keys must also implement `Comparable`.
 
 **Unsupported operations**: `addFirst()`, `removeFirst()`, and `remove()` throw `UnsupportedOperationException` because they would require rewriting the entire file.
 
